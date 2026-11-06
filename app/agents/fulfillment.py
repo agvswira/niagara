@@ -141,6 +141,15 @@ def book_slot(state: FulfillState, config) -> FulfillState:
     s = _s(config)
     order = s.get(SalesOrder, state["order_id"])
     customer = s.get(Customer, order.customer_id)
+    if not any(ln.product_id and ln.qty_base > 0 for ln in order.lines):
+        # Nothing can ship today: keep it as a backorder instead of confirming an empty order.
+        set_order_status(s, order_id=order.id, status="BACKORDERED", actor="fulfillment_agent")
+        notes = [n for n in state.get("notes", []) if "stoknya kosong" not in n]
+        reply(s, customer, templates.backorder_only(customer.owner_name, order, notes))
+        tracing.step("decision", "Semua barang kosong, order dicatat sebagai backorder",
+                     {"alasan": "Tidak ada yang bisa dikirim. Agen membuat kiriman susulan saat barang masuk gudang."})
+        tracing.summarize(f"{order.number}: seluruhnya backorder")
+        return {}
     requested = order.requested_delivery.isoformat() if order.requested_delivery else None
     slot = get_delivery_slot(s, area=customer.area, requested=requested, not_before=order.requested_not_before).data
     order.delivery_date = date.fromisoformat(slot["date"])
@@ -190,6 +199,47 @@ def on_matched(s: Session, ev) -> None:
                            customer_id=order.customer_id):
         GRAPH.invoke({"order_id": order.id, "updated": bool(ev.payload.get("updated")),
                       "notes": list(ev.payload.get("notes", []))}, config={"configurable": {"session": s}})
+
+
+@events.on("stock.received")
+def on_stock_received(s: Session, ev) -> None:
+    """Turns waiting backorders for this product into follow-up orders, oldest first."""
+    from app import clock
+    from app.tools.orders import available, next_order_number
+
+    pid = ev.entity_id
+    with tracing.agent_run(s, "fulfillment", event_id=ev.id, entity_type="product", entity_id=pid):
+        product = s.get(Product, pid)
+        waiting = (s.query(SalesOrderLine).join(SalesOrder, SalesOrderLine.order_id == SalesOrder.id)
+                   .filter(SalesOrderLine.product_id == pid, SalesOrderLine.backorder_base > 0,
+                           SalesOrder.status.notin_(["CANCELLED"]))
+                   .order_by(SalesOrder.created_at).all())
+        tracing.step("think", f"Barang masuk: {product.name}",
+                     {"tersedia_sekarang": available(s, pid), "backorder_menunggu": len(waiting)})
+        created = []
+        for line in waiting:
+            free = available(s, pid)
+            if free <= 0:
+                tracing.step("decision", "Stok habis lagi, sisa backorder menunggu kiriman berikutnya", {})
+                break
+            take = min(free, line.backorder_base)
+            parent = s.get(SalesOrder, line.order_id)
+            factor = _factor(s, pid, line.uom)
+            now = clock.now(s)
+            child = SalesOrder(number=next_order_number(s), customer_id=parent.customer_id, status="MATCHED",
+                               parent_order_id=parent.id, auto_processed=True, created_at=now, updated_at=now)
+            s.add(child)
+            s.flush()
+            s.add(SalesOrderLine(order_id=child.id, product_id=pid, raw_text=line.raw_text, qty=take / factor,
+                                 uom=line.uom, qty_base=take, confidence=1.0))
+            line.backorder_base -= take
+            s.flush()
+            events.emit(s, "order.matched", "sales_order", child.id,
+                        {"notes": [f"Ini kiriman susulan untuk pesanan {parent.number}."]})
+            created.append(f"{child.number} untuk {parent.customer.name} ({_qty_text(s, line, take)})")
+        if created:
+            tracing.step("decision", f"{len(created)} kiriman susulan dibuat", {"order": created})
+        tracing.summarize(f"{product.name} masuk; {len(created)} backorder dijadikan kiriman susulan")
 
 
 @events.on("order.substitution_answered")

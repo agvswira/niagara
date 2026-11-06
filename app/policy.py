@@ -15,6 +15,10 @@ DEFAULT_POLICIES: dict[str, tuple[Any, str]] = {
     "substitution.max_price_diff_pct": (10, "Pengganti hanya boleh dari kategori sama dengan selisih harga maksimal N persen."),
     "messaging.quiet_hours": ([21, 7], "Tidak mengirim pesan penagihan di antara jam ini."),
     "collection.max_msgs_per_day": (1, "Maksimal pesan penagihan per pelanggan per hari."),
+    "conversation.question_ttl_hours": (24, "Jawaban atas pertanyaan agen hanya dianggap jawaban dalam N jam."),
+    "conversation.close_unanswered_hours": (48, "Order yang menunggu jawaban pelanggan lebih dari N jam ditutup otomatis."),
+    "claims.max_days_after_delivery": (3, "Keluhan kurang atau rusak diterima sampai N hari setelah barang dikirim."),
+    "credit.unverified_needs_approval": (True, "Order dari nomor baru yang belum diverifikasi butuh persetujuan supervisor."),
     "collection.max_promise_days": (14, "Janji bayar lebih lama dari N hari butuh persetujuan supervisor."),
     "payment.fee_tolerance": (6_500, "Selisih kurang bayar sampai nominal ini dianggap biaya transfer antarbank."),
     "payment.date_tolerance_days": (1, "Selisih tanggal bukti transfer dan mutasi yang masih diterima."),
@@ -65,6 +69,9 @@ def evaluate_credit(s: Session, *, customer, order_total: int, outstanding: int,
     if hold_rules:
         return Decision("HOLD", hold_rules, hold_reasons)
 
+    if not customer.verified and get(s, "credit.unverified_needs_approval"):
+        appr_rules.append("credit.unverified_needs_approval")
+        appr_reasons.append("Nomor baru belum diverifikasi supervisor.")
     new_amt = get(s, "credit.new_customer_approval_amount")
     if customer.is_new and order_total > new_amt:
         appr_rules.append("credit.new_customer_approval_amount")

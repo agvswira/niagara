@@ -7,7 +7,7 @@ from app.models import Approval, Customer, SalesOrder
 from app.tools.messaging import send_message
 
 OPEN_ORDER_STATES = ("RECEIVED", "NEEDS_CLARIFICATION", "PENDING_REVIEW", "MATCHED", "SUBSTITUTION_OFFERED",
-                     "STOCK_CHECKED", "ON_HOLD_CREDIT", "PENDING_APPROVAL", "CONFIRMED")
+                     "STOCK_CHECKED", "ON_HOLD_CREDIT", "PENDING_APPROVAL", "CONFIRMED", "BACKORDERED")
 WAITING_STATES = ("NEEDS_CLARIFICATION", "SUBSTITUTION_OFFERED")
 
 

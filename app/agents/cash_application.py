@@ -11,7 +11,7 @@ from app.agents.credit import release_held_orders
 from app.models import BankTransaction, Customer, PaymentProof, SalesOrder
 from app.tools import credit as credit_tools
 from app.tools.base import rupiah
-from app.tools.payments import allocate_payment, identify_payer, plan_allocation, unmatched
+from app.tools.payments import add_to_balance, allocate_payment, identify_payer, plan_allocation, unmatched
 
 
 class CashState(TypedDict, total=False):
@@ -44,8 +44,10 @@ def plan(state: CashState, config) -> CashState:
 
 def route_plan(state: CashState) -> str:
     p = state["plan"]
+    trusted = state["payer"]["method"] in ("bukti_transfer", "tunai_sales", "giro")
     if not p["allocations"]:
-        return "park_unknown"
+        # A payer we are sure of with nothing open to pay: keep it as saldo titipan.
+        return "post" if trusted else "park_unknown"
     # A name-only match with leftover money is too uncertain to post automatically.
     if state["payer"]["method"] == "nama_rekening" and p["unapplied"] > 0:
         return "park_unknown"
@@ -64,11 +66,13 @@ def post(state: CashState, config) -> CashState:
         proof = s.get(PaymentProof, state["payer"]["proof_id"])
         proof.status, proof.bank_tx_id = "MATCHED", tx.id
     if p["unapplied"] > 0:
-        tracing.step("decision", f"Sisa {rupiah(p['unapplied'])} belum teralokasi, dicatat sebagai titipan", {})
+        add_to_balance(s, customer_id=cid, amount=p["unapplied"], reason=f"kelebihan bayar {tx.ref}")
+        tracing.step("decision", f"Kelebihan {rupiah(p['unapplied'])} disimpan sebagai saldo titipan",
+                     {"alasan": "Tidak ada tagihan terbuka yang tersisa. Saldo otomatis dipakai untuk invoice berikutnya."})
     released = release_held_orders(s, cid)
     customer = s.get(Customer, cid)
     text = templates.payment_applied(customer.owner_name, tx.amount, res.data["invoices"],
-                                     [(o.number, o.delivery_date) for o in released])
+                                     [(o.number, o.delivery_date) for o in released], balance_added=p["unapplied"])
     still_held = s.query(SalesOrder).filter_by(customer_id=cid, status="ON_HOLD_CREDIT").all()
     if still_held:
         snap = credit_tools.snapshot(s, cid)
@@ -77,7 +81,7 @@ def post(state: CashState, config) -> CashState:
                                                                              "sisa_piutang": snap["outstanding"]})
     reply(s, customer, text)
     events.emit(s, "payment.applied", "bank_transaction", tx.id, {"customer_id": cid, "released": [o.id for o in released]})
-    tracing.summarize(f"{rupiah(tx.amount)} dari {customer.name} dialokasikan ke {', '.join(res.data['invoices'])}"
+    tracing.summarize(f"{rupiah(tx.amount)} dari {customer.name} dialokasikan ke {', '.join(res.data['invoices']) or 'saldo titipan'}"
                       + (f", {len(released)} order dilepas" if released else ""))
     return {}
 
@@ -119,6 +123,37 @@ def on_import(s: Session, ev) -> None:
     for tx_id in ev.payload.get("tx_ids", []):
         if s.get(BankTransaction, tx_id).status == "NEW":
             process_transaction(s, tx_id, ev.id)
+
+
+@events.on("payment.manual_recorded")
+def on_manual(s: Session, ev) -> None:
+    tx = s.get(BankTransaction, ev.entity_id)
+    if tx.status == "NEW":
+        process_transaction(s, tx.id, ev.id)
+
+
+@events.on("payment.bounced")
+def on_bounced(s: Session, ev) -> None:
+    data = ev.payload
+    customer = s.get(Customer, data["customer_id"])
+    with tracing.agent_run(s, "cash_application", event_id=ev.id, entity_type="bank_transaction", entity_id=ev.entity_id,
+                           customer_id=customer.id):
+        tracing.step("decision", "Giro ditolak bank, alokasi dibatalkan",
+                     {"invoice_dibuka_lagi": data["reopened"], "skor_bayar_baru": round(customer.payment_score, 2)})
+        reply(s, customer, templates.giro_bounced(customer.owner_name, data["amount"], data["reopened"]))
+        tracing.summarize(f"Giro {rupiah(data['amount'])} dari {customer.name} ditolak bank")
+
+
+@events.on("schedule.giro")
+def on_giro_day(s: Session, ev) -> None:
+    """Giros whose due date has come are treated as cleared and applied like any other payment."""
+    from app import clock
+
+    due = s.query(BankTransaction).filter(BankTransaction.status == "GIRO_PENDING",
+                                          BankTransaction.tx_date <= clock.today(s)).all()
+    for tx in due:
+        tx.status = "NEW"
+        process_transaction(s, tx.id, ev.id)
 
 
 @events.on("payment.proof_received")

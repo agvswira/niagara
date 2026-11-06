@@ -51,12 +51,23 @@ class DeliveryRequest(BaseModel):
     not_before: bool = Field(default=False, description="True untuk 'jangan sebelum ...'")
 
 
+class DeliveryIssue(BaseModel):
+    kind: Literal["kurang", "rusak", "tidak_sampai", "salah_kirim"] = Field(
+        description="kurang = jumlah datang kurang, rusak = pecah/bocor/penyok/kadaluarsa, tidak_sampai = belum datang")
+    item: Optional[str] = None
+    qty: Optional[float] = None
+    unit: Optional[str] = None
+
+
 class Understanding(BaseModel):
     intent: Intent = Field(description="Niat utama pesan")
     also_intents: list[Intent] = Field(default_factory=list, description="Niat lain di pesan yang sama, misal bukti bayar sekaligus order baru")
     lines: list[OrderLine] = Field(default_factory=list)
     changes: list[OrderChange] = Field(default_factory=list, description="Perubahan pada pesanan yang sudah ada")
     requested_delivery: Optional[DeliveryRequest] = None
+    issues: list[DeliveryIssue] = Field(default_factory=list, description="Keluhan atas barang yang sudah dikirim")
+    cash_paid_to_sales: bool = Field(default=False, description="Pelanggan bilang sudah bayar tunai lewat sales")
+    cash_amount: Optional[int] = Field(default=None, description="Nominal tunai yang disebut, dalam rupiah")
     uses_usual_order: bool = Field(default=False, description="Pelanggan minta 'yang biasa' / 'kayak kemarin'")
     replacements: list[Replacement] = Field(default_factory=list)
     removals: list[str] = Field(default_factory=list)

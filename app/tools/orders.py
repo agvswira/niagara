@@ -150,6 +150,18 @@ def reserve_stock(s: Session, order_id: int) -> dict:
     return reserved
 
 
+@tool("receive_stock", "write")
+def receive_stock(s: Session, product_id: int, qty_base: int, ref: str, actor: str) -> dict:
+    if qty_base <= 0:
+        raise ToolError("bad_qty", "Jumlah barang masuk harus lebih dari nol.")
+    st = s.query(Stock).filter_by(product_id=product_id).first()
+    before = st.qty_on_hand
+    st.qty_on_hand += qty_base
+    audit(s, actor, "receive_stock", "product", product_id, before={"stok": before}, after={"stok": st.qty_on_hand, "ref": ref})
+    s.flush()
+    return {"product_id": product_id, "on_hand": st.qty_on_hand, "available": st.qty_on_hand - st.qty_reserved}
+
+
 def release_reservation(s: Session, o: SalesOrder) -> None:
     for ln in o.lines:
         if ln.product_id:

@@ -20,8 +20,8 @@ ROLES = {
 }
 # Which approval cards each role may decide. Supervisor may decide everything.
 APPROVALS_BY_ROLE = {
-    "admin_order": {"order_review", "unknown_item", "complaint", "handoff", "discount_note"},
-    "staf_ar": {"unmatched_payment", "escalation", "promise_review"},
+    "admin_order": {"order_review", "unknown_item", "complaint", "handoff", "discount_note", "retur"},
+    "staf_ar": {"unmatched_payment", "escalation", "promise_review", "klaim_tunai"},
 }
 DEMO_USERS = [("admin", "Admin order", "admin_order"), ("ar", "Staf AR", "staf_ar"), ("supervisor", "Supervisor", "supervisor")]
 

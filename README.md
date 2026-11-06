@@ -81,6 +81,12 @@ Di halaman **Percakapan**, pilih toko lalu kirim pesan sebagai pemiliknya (ada d
 11. **Beberapa permintaan sekaligus.** `sudah tf ya, sekalian order indomie goreng 2 dus. pesanan kemarin kapan dikirim?` Agen menyusun rencana tiga langkah (terlihat di jejak) dan menjawab ketiganya.
 12. **Barang di luar katalog.** `obat nyamuk bakar 3 dus` langsung masuk Meja kerja admin. Barang yang mirip produk lain (misalnya `sabun colek ekonomi`) ditanyakan dulu dengan pilihan "Bukan salah satunya".
 13. Masuk sebagai `ar` lalu sebagai `admin`: Meja kerja masing-masing hanya menampilkan keputusan untuk perannya, dan halaman Aturan hanya bisa diubah supervisor.
+14. **Backorder dan kiriman susulan.** Toko Lestari tidak menerima barang pengganti. Kirim `minyak fortune 2 liter 2 dus` (stoknya nol): order dicatat sebagai "Menunggu stok". Di halaman **Stok**, catat Fortune masuk 5 dus. Agen langsung membuat kiriman susulan dan mengabari toko.
+15. **Kurang atau rusak saat diterima.** Setelah order terkirim (tekan Maju 1 hari sampai statusnya "Terkirim, ditagih"), pelanggan menulis `indomie goreng kurang 1 dus` atau `aqua tgg 2 dus pecah`. Sopir juga bisa melapor lewat formulir **Laporan pengiriman** di detail order, termasuk "ditolak toko". Klaim masuk Meja kerja; bila disetujui, nota kredit memotong tagihan. Barang kurang atau ditolak kembali ke stok, barang rusak dihapuskan.
+16. **Saldo titipan.** Bila pelanggan membayar lebih dari tagihannya, kelebihannya disimpan sebagai saldo dan otomatis memotong invoice berikutnya. Nota kredit atas tagihan yang sudah lunas juga masuk saldo.
+17. **Tunai lewat sales dan giro.** Pelanggan menulis `sudah saya titip ke sales 2 juta ya`; staf AR mengonfirmasi nominal setoran di Meja kerja. Di halaman **Kas masuk**, staf AR juga bisa mencatat setoran tunai atau giro dengan tanggal cair. Giro dicocokkan otomatis saat tanggalnya tiba, dan tombol **Tandai ditolak bank** membuka kembali tagihannya.
+18. **Nomor baru.** Di halaman Percakapan, buka "Simulasikan pesan dari nomor baru". Niagara mendaftarkan kontak sementara, menyapa, tetap mencatat pesanannya untuk dicek admin, dan meminta supervisor melengkapi data toko. Order dari nomor yang belum diverifikasi selalu butuh persetujuan supervisor.
+19. **Pertanyaan yang kedaluwarsa.** Jawaban angka lebih dari 24 jam setelah pertanyaan agen tidak lagi dianggap jawaban. Order yang menunggu jawaban lebih dari 48 jam ditutup otomatis dan pelanggan diberi tahu.
 
 Setiap order punya tombol **Buka jejak lengkap** yang menampilkan semua langkah agen.
 
@@ -90,7 +96,7 @@ Setiap order punya tombol **Buka jejak lengkap** yang menampilkan semua langkah 
 python -m eval.run_eval --provider heuristic   # atau --provider gemini
 ```
 
-Selain eval di bawah, `tests/` berisi 26 tes alur dan API (ubah dan batal order, tanggal kirim, pesan ganda, barang di luar katalog, login, peran, penyamaran data).
+Selain eval di bawah, `tests/` berisi 36 tes alur dan API (ubah dan batal order, tanggal kirim, pesan ganda, barang di luar katalog, backorder, klaim dan nota kredit, saldo titipan, tunai dan giro, nomor baru, pertanyaan kedaluwarsa, login, peran, penyamaran data).
 
 Eval menjalankan agen yang sama di database baru lalu menilai tiga hal: pemahaman order (52 pesan di `eval/datasets/orders.jsonl`, termasuk 7 yang sengaja ambigu), pencocokan pembayaran (7 situasi: persis, kombinasi, biaya transfer, sebagian, dikenali dari nama rekening, pengirim tak dikenal, bukti tanpa mutasi), dan 8 percobaan prompt injection. Hasil ditulis ke `eval/results/REPORT-<mode>.md`.
 
@@ -116,6 +122,9 @@ app/
   tools/       alat yang dipanggil agen: katalog, order, kredit, pembayaran, pesan
   llm/         klien Gemini, skema output, parser offline, prompt
   policy.py    aturan bisnis yang dibaca dari database
+  auth.py      login, sesi, dan izin per peran
+  privacy.py   penyamaran data pribadi sebelum teks dikirim ke LLM
+  onboarding.py  kontak baru dari nomor yang belum terdaftar
   events.py    event bus berbasis tabel
   tracing.py   pencatat langkah agen
   sim.py       simulator: pesan pelanggan, gambar nota dan bukti transfer, feed bank, mesin waktu
@@ -131,5 +140,7 @@ tests/         tes alur end-to-end
 - Mutasi bank berasal dari feed simulasi atau unggahan CSV, belum dari API bank.
 - Gudang (pick, pack) dan pajak (e-Faktur) di luar cakupan.
 - Penyamaran data pribadi hanya berlaku untuk teks. Foto (bukti transfer, nota) dan pesan suara dikirim apa adanya ke Gemini.
-- Belum ada alur retur, gagal kirim, saldo titipan dari kelebihan bayar, atau pembayaran tunai ke sales.
+- Data toko baru dilengkapi supervisor lewat formulir; agen belum membaca nama dan alamat toko dari chat.
+- Barang salah kirim (bukan kurang atau rusak) dan permintaan retur barang yang tidak cacat masih ditangani admin secara manual.
+- Klaim tunai bergantung pada konfirmasi staf AR; belum ada rekap setoran harian per sales.
 - Semua data pelanggan, transaksi, dan harga adalah data simulasi. Nama merek di katalog hanya contoh barang yang umum dijual distributor.

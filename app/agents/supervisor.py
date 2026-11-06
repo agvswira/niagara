@@ -120,6 +120,12 @@ def on_decided(s: Session, ev) -> None:
             _order_decision(s, a, approved)
         elif a.kind == "unmatched_payment" and approved:
             _manual_payment(s, a)
+        elif a.kind == "retur":
+            _claim_decision(s, a, approved)
+        elif a.kind == "klaim_tunai":
+            _cash_claim_decision(s, a, approved)
+        elif a.kind == "pelanggan_baru":
+            _new_customer_decision(s, a, approved)
         elif a.kind == "promise_review":
             p = s.get(PromiseToPay, a.entity_id)
             customer = s.get(Customer, p.customer_id)
@@ -129,6 +135,65 @@ def on_decided(s: Session, ev) -> None:
             else:
                 reply(s, customer, f"{customer.owner_name}, untuk tanggal tersebut belum bisa kami setujui."
                                    f" Boleh dibantu pembayaran paling lambat {templates.tanggal(clock.today(s) + timedelta(days=7))}?")
+
+
+def _claim_decision(s: Session, a: Approval, approved: bool) -> None:
+    from app.models import Claim
+    from app.tools.claims import issue_credit_note
+
+    claim = s.get(Claim, a.entity_id)
+    order = s.get(SalesOrder, claim.order_id)
+    customer = s.get(Customer, claim.customer_id)
+    tracing.link("sales_order", order.id, customer.id)
+    if not approved:
+        claim.status = "REJECTED"
+        reply(s, customer, templates.claim_rejected(customer.owner_name, order.number))
+        return
+    res = issue_credit_note(s, claim_id=claim.id, actor=a.decided_by or "admin")
+    if res.ok:
+        reply(s, customer, templates.claim_approved(customer.owner_name, res.data))
+        tracing.summarize(f"Nota kredit {res.data['credit_note']} {rupiah(res.data['amount'])} untuk {customer.name}")
+
+
+def _cash_claim_decision(s: Session, a: Approval, approved: bool) -> None:
+    from app.tools.payments import record_manual_payment
+
+    payload = a.payload or {}
+    customer = s.get(Customer, payload["customer_id"])
+    if not approved:
+        reply(s, customer, f"{customer.owner_name}, setoran tunai dari sales belum kami terima."
+                           f" Admin kami akan konfirmasi ke sales dan menghubungi.")
+        return
+    amount = int(payload.get("confirmed_amount") or payload.get("amount") or 0)
+    if amount <= 0:
+        tracing.step("error", "Nominal tunai kosong, tidak dicatat", payload, ok=False)
+        return
+    res = record_manual_payment(s, customer_id=customer.id, kind="tunai", amount=amount, actor=a.decided_by or "staf_ar",
+                                collector=payload.get("collector", ""), note="klaim tunai dari chat")
+    if res.ok:
+        events.emit(s, "payment.manual_recorded", "bank_transaction", res.data["tx_id"], {})
+
+
+def _new_customer_decision(s: Session, a: Approval, approved: bool) -> None:
+    customer = s.get(Customer, a.entity_id)
+    fields = (a.payload or {}).get("fields", {})
+    tracing.link("customer", customer.id, customer.id)
+    if not approved:
+        reply(s, customer, "Mohon maaf, nomor ini belum bisa kami layani sebagai pelanggan. Tim kami akan menghubungi.")
+        return
+    for key in ("name", "owner_name", "area", "tier"):
+        if fields.get(key):
+            setattr(customer, key, str(fields[key])[:120])
+    if fields.get("credit_limit"):
+        customer.credit_limit = int(fields["credit_limit"])
+    customer.verified = True
+    customer.bank_account_name = customer.owner_name.split(" ", 1)[-1].upper()
+    reply(s, customer, templates.welcome_verified(customer.owner_name, customer.name))
+    tracing.summarize(f"{customer.name} diverifikasi supervisor")
+    for o in s.query(SalesOrder).filter_by(customer_id=customer.id, status="PENDING_APPROVAL").all():
+        for old in s.query(Approval).filter_by(entity_type="sales_order", entity_id=o.id, kind="credit", status="PENDING"):
+            old.status, old.decided_by = "SUPERSEDED", "supervisor_agent"
+        events.emit(s, "order.stock_checked", "sales_order", o.id, {"notes": []})
 
 
 def _order_decision(s: Session, a: Approval, approved: bool) -> None:

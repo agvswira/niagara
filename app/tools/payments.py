@@ -46,6 +46,9 @@ def import_bank_mutations(s: Session, rows: list[dict]) -> dict:
 def identify_payer(s: Session, tx_id: int) -> dict:
     """Proof sent over chat wins; otherwise fuzzy-match the transfer description against account names."""
     tx = s.get(BankTransaction, tx_id)
+    if tx.customer_id and tx.kind in ("tunai", "giro"):
+        return {"customer_id": tx.customer_id, "method": "tunai_sales" if tx.kind == "tunai" else "giro",
+                "proof_id": None, "score": 100}
     tol_days = policy.get(s, "payment.date_tolerance_days")
     for p in s.query(PaymentProof).filter(PaymentProof.status == "AWAITING_MUTATION"):
         same_amount = p.amount == tx.amount
@@ -123,6 +126,75 @@ def allocate_payment(s: Session, tx_id: int, customer_id: int, allocations: list
     tx.status, tx.customer_id = "MATCHED", customer_id
     s.flush()
     return {"applied": applied, "invoices": [a["number"] for a in allocations]}
+
+
+@tool("record_manual_payment", "financial")
+def record_manual_payment(s: Session, customer_id: int, kind: str, amount: int, actor: str, collector: str = "",
+                          giro_due: str | None = None, note: str = "") -> dict:
+    """Cash handed to a salesperson, or a giro that clears on its due date."""
+    if kind not in ("tunai", "giro") or amount <= 0:
+        raise ToolError("bad_payment", "Jenis harus tunai atau giro dan nominal lebih dari nol.")
+    today = clock.today(s)
+    due = date.fromisoformat(giro_due) if giro_due else today
+    n = s.query(BankTransaction).count() + 1
+    c = s.get(Customer, customer_id)
+    desc = (f"SETORAN TUNAI {c.name.upper()} VIA {collector.upper() or 'SALES'}" if kind == "tunai"
+            else f"GIRO {c.name.upper()} CAIR {due.isoformat()}")
+    tx = BankTransaction(bank="TUNAI" if kind == "tunai" else "GIRO", kind=kind, tx_date=due if kind == "giro" else today,
+                         amount=amount, description=desc[:200], ref=f"{kind.upper()}-{today:%y%m%d}-{n:04d}",
+                         status="GIRO_PENDING" if kind == "giro" and due > today else "NEW", customer_id=customer_id,
+                         match_note=note or None)
+    s.add(tx)
+    s.flush()
+    audit(s, actor, "manual_payment", "bank_transaction", tx.id, after={"jenis": kind, "nominal": amount, "cair": due.isoformat()})
+    return {"tx_id": tx.id, "status": tx.status, "ref": tx.ref}
+
+
+@tool("bounce_payment", "financial")
+def bounce_payment(s: Session, tx_id: int, actor: str) -> dict:
+    """A giro rejected by the bank: undo its allocations so the invoices are open again."""
+    tx = s.get(BankTransaction, tx_id)
+    if tx.kind != "giro" or tx.status not in ("GIRO_PENDING", "MATCHED", "NEW"):
+        raise ToolError("not_bounceable", "Hanya giro yang belum ditolak yang bisa dibatalkan.")
+    reopened = []
+    for a in s.query(PaymentAllocation).filter_by(bank_tx_id=tx.id).all():
+        inv = s.get(Invoice, a.invoice_id)
+        inv.paid_amount = max(0, inv.paid_amount - a.amount - a.fee_writeoff)
+        inv.status = "OPEN" if inv.paid_amount == 0 and inv.due_date >= clock.today(s) else (
+            "OVERDUE" if inv.paid_amount == 0 else "PARTIALLY_PAID")
+        reopened.append(inv.number)
+        s.delete(a)
+    tx.status = "BOUNCED"
+    c = s.get(Customer, tx.customer_id)
+    c.payment_score = max(0.0, c.payment_score - 0.2)
+    audit(s, actor, "bounce_giro", "bank_transaction", tx.id, after={"invoice_dibuka_lagi": reopened})
+    s.flush()
+    return {"reopened": reopened, "customer_id": tx.customer_id, "amount": tx.amount}
+
+
+@tool("add_to_balance", "financial")
+def add_to_balance(s: Session, customer_id: int, amount: int, reason: str) -> dict:
+    c = s.get(Customer, customer_id)
+    before = c.credit_balance
+    c.credit_balance += amount
+    audit(s, "cash_application_agent", "add_balance", "customer", customer_id, before={"saldo": before},
+          after={"saldo": c.credit_balance, "alasan": reason})
+    s.flush()
+    return {"saldo": c.credit_balance}
+
+
+def apply_balance(s: Session, invoice: Invoice, actor: str = "cash_application_agent") -> int:
+    """Uses the customer's saldo titipan to pay a new invoice. Returns the amount used."""
+    c = s.get(Customer, invoice.customer_id)
+    use = min(c.credit_balance, invoice.amount - invoice.paid_amount)
+    if use <= 0:
+        return 0
+    c.credit_balance -= use
+    invoice.paid_amount += use
+    invoice.status = "PAID" if invoice.paid_amount >= invoice.amount else "PARTIALLY_PAID"
+    audit(s, actor, "apply_balance", "invoice", invoice.id, after={"dipakai": use, "sisa_saldo": c.credit_balance})
+    s.flush()
+    return use
 
 
 def unmatched(s: Session, tx: BankTransaction, note: str, candidates: list[dict]) -> None:

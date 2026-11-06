@@ -83,6 +83,8 @@ const STATUS = {
   OPEN: ["Belum jatuh tempo", ""], OVERDUE: ["Lewat jatuh tempo", "attention"], PAID: ["Lunas", "done"],
   PARTIALLY_PAID: ["Sebagian", ""], NEW: ["Baru", ""], MATCHED_TX: ["Cocok", "done"], UNMATCHED: ["Perlu dicek", "attention"],
   KEPT: ["Ditepati", "done"], BROKEN: ["Diingkari", "attention"], REVIEW: ["Dicek supervisor", "attention"], REJECTED: ["Ditolak", ""],
+  RETURNED: ["Ditolak toko", "attention"], GIRO_PENDING: ["Giro belum cair", ""], BOUNCED: ["Giro ditolak", "attention"],
+  VOID: ["Dibatalkan", ""], BACKORDERED: ["Menunggu stok", ""],
 };
 function stamp(status, big) {
   const [label, tone] = STATUS[status] || [status, ""];
@@ -95,8 +97,11 @@ const APPROVAL = {
   order_review: "Cek draft pesanan", credit: "Persetujuan kredit", discount: "Permintaan diskon",
   discount_note: "Diskon ditolak aturan", unmatched_payment: "Transfer belum dikenali", escalation: "Eskalasi piutang",
   complaint: "Keluhan pelanggan", handoff: "Pesan perlu dibalas admin", promise_review: "Janji bayar terlalu jauh",
-  unknown_item: "Barang di luar katalog",
+  unknown_item: "Barang di luar katalog", retur: "Klaim pengiriman", klaim_tunai: "Klaim bayar tunai",
+  pelanggan_baru: "Nomor baru minta dilayani",
 };
+const CLAIM_KIND = { kurang: "kurang kirim", rusak: "barang rusak", ditolak: "ditolak toko" };
+const AREAS = ["Klojen", "Lowokwaru", "Blimbing", "Sukun", "Kedungkandang", "Dau", "Singosari"];
 const ACK_ONLY = new Set(["discount_note", "escalation", "complaint", "handoff", "unknown_item"]);
 
 // ---------- global state & routing ----------
@@ -149,7 +154,7 @@ function schedule() {
 
 async function render(full) {
   const main = $("#main");
-  const views = { meja: viewDesk, percakapan: viewChat, order: viewOrders, piutang: viewAR, kas: viewCash, brief: viewBrief, aturan: viewRules };
+  const views = { meja: viewDesk, percakapan: viewChat, order: viewOrders, piutang: viewAR, kas: viewCash, brief: viewBrief, aturan: viewRules, stok: viewStock };
   const view = views[app.route] || viewDesk;
   if (full) main.replaceChildren(el("p", { class: "state-msg" }, "Memuat…"));
   try {
@@ -242,11 +247,39 @@ async function openOrder(id) {
         linesTable(o.lines),
         el("p", { class: "num", style: "margin-top:10px;text-align:right;font-weight:600" }, `Total ${rupiah(o.total)}`),
         el("p", { class: "muted small" }, o.delivery_date ? `Jadwal kirim ${tgl(o.delivery_date)}` : "Belum ada jadwal kirim")),
+      o.status === "INVOICED" && ["admin_order", "supervisor"].includes(app.user.role) ? deliveryReport(o) : null,
       el("h3", {}, "Jejak keputusan agen"),
       o.runs.length ? el("div", { class: "trace" }, o.runs.map((r, i) => renderRun(r, i === 0))) : el("p", { class: "muted" }, "Belum ada jejak agen untuk order ini."));
   } catch (e) {
     $("#drawer-body").replaceChildren(el("p", { class: "state-msg error" }, `Gagal memuat: ${e.message}`));
   }
+}
+
+function deliveryReport(o) {
+  const kind = el("select", { id: "dr-kind" }, Object.entries(CLAIM_KIND).map(([v, l]) => el("option", { value: v }, l)));
+  const line = el("select", { id: "dr-line" }, o.lines.filter((l) => l.product).map((l) => el("option", { value: l.id }, `${l.product} (${l.qty} ${l.uom})`)));
+  const qty = el("input", { type: "number", id: "dr-qty", min: "0", step: "1", value: "1" });
+  const note = el("input", { type: "text", id: "dr-note", placeholder: "misal: 1 dus tertinggal di gudang" });
+  const lineField = el("div", { class: "field" }, el("label", { for: "dr-line" }, "Barang"), line);
+  const qtyField = el("div", { class: "field" }, el("label", { for: "dr-qty" }, "Jumlah (satuan di order)"), qty);
+  kind.addEventListener("change", () => { const whole = kind.value === "ditolak"; lineField.hidden = whole; qtyField.hidden = whole; });
+  const submit = el("button", { type: "submit", class: "btn btn-primary" }, "Kirim laporan ke Meja kerja");
+  return el("form", { class: "panel panel-pad stack", "aria-labelledby": "dr-title", onsubmit: async (e) => {
+    e.preventDefault();
+    submit.disabled = true;
+    const body = { kind: kind.value, note: note.value };
+    if (kind.value !== "ditolak") { body.line_id = Number(line.value); body.qty = Number(qty.value); }
+    try {
+      const r = await api(`/api/orders/${o.id}/delivery-issue`, { method: "POST", body });
+      toast(`Klaim ${rupiah(r.amount)} masuk Meja kerja untuk disetujui.`);
+      await refreshState(); openOrder(o.id);
+    } catch (err) { toast(err.message); submit.disabled = false; }
+  } },
+    el("h3", { id: "dr-title" }, "Laporan pengiriman"),
+    el("p", { class: "muted small" }, "Dari sopir atau gudang. Uang dan stok baru berubah setelah klaim disetujui."),
+    el("div", { class: "field" }, el("label", { for: "dr-kind" }, "Masalah"), kind), lineField, qtyField,
+    el("div", { class: "field" }, el("label", { for: "dr-note" }, "Catatan"), note),
+    el("div", { class: "row-actions" }, submit));
 }
 
 async function openRun(id) {
@@ -351,6 +384,46 @@ function ticket(a) {
           if (!sel.value) { toast("Pilih pelanggan dulu."); sel.focus(); return; }
           decide("approve", { customer_id: Number(sel.value) });
         } }, "Alokasikan ke pelanggan ini")));
+  } else if (a.kind === "retur" && a.claim) {
+    const c = a.claim;
+    card.append(el("p", {}, `${CLAIM_KIND[c.kind]}${c.product ? ": " + c.product : ""} pada `,
+      el("button", { type: "button", class: "btn btn-quiet btn-small code", onclick: () => openOrder(c.order_id) }, c.order),
+      `. Dilaporkan ${c.source}.`),
+      el("p", { class: "num" }, `Usulan nota kredit ${rupiah(c.amount)}`),
+      el("div", { class: "row-actions" },
+        el("button", { type: "button", class: "btn", onclick: () => decide("reject") }, "Tolak klaim"),
+        el("button", { type: "button", class: "btn btn-primary", onclick: () => decide("approve") }, "Setujui nota kredit")));
+  } else if (a.kind === "klaim_tunai") {
+    const amt = el("input", { type: "number", id: `cash-${a.id}`, min: "0", step: "1000", value: (a.payload && a.payload.amount) || "" });
+    if (a.payload && a.payload.text) card.append(el("p", {}, `Pesan: "${a.payload.text}"`));
+    card.append(el("div", { class: "field" }, el("label", { for: `cash-${a.id}` }, "Nominal yang disetor sales (Rp)"), amt),
+      el("div", { class: "row-actions" },
+        el("button", { type: "button", class: "btn", onclick: () => decide("reject") }, "Belum ada setoran"),
+        el("button", { type: "button", class: "btn btn-primary", onclick: () => {
+          if (!Number(amt.value)) { toast("Isi nominal setoran dulu."); amt.focus(); return; }
+          decide("approve", { amount: Number(amt.value) });
+        } }, "Catat dan cocokkan")));
+  } else if (a.kind === "pelanggan_baru") {
+    const f = a.customer_fields || {};
+    const input = (id, label, value, type) => {
+      const i = el("input", { type: type || "text", id: `nc-${id}-${a.id}`, value: value || "" });
+      return [el("div", { class: "field" }, el("label", { for: `nc-${id}-${a.id}` }, label), i), i];
+    };
+    const [nameF, name] = input("name", "Nama toko", f.name && !f.name.startsWith("Kontak baru") ? f.name : "");
+    const [ownerF, owner] = input("owner", "Nama pemilik", f.owner_name && f.owner_name !== "Bapak/Ibu" ? f.owner_name : "");
+    const [limitF, limit] = input("limit", "Limit kredit (Rp)", f.credit_limit, "number");
+    const area = el("select", { id: `nc-area-${a.id}` }, AREAS.map((x) => el("option", { value: x }, x)));
+    const tier = el("select", { id: `nc-tier-${a.id}` }, ["C", "B", "A"].map((x) => el("option", { value: x }, x)));
+    if (a.payload && a.payload.first_message) card.append(el("p", {}, `Pesan pertama: "${a.payload.first_message}"`));
+    card.append(nameF, ownerF,
+      el("div", { class: "field" }, el("label", { for: `nc-area-${a.id}` }, "Area rute"), area),
+      el("div", { class: "field" }, el("label", { for: `nc-tier-${a.id}` }, "Tier harga"), tier), limitF,
+      el("div", { class: "row-actions" },
+        el("button", { type: "button", class: "btn", onclick: () => decide("reject") }, "Tolak"),
+        el("button", { type: "button", class: "btn btn-primary", onclick: () => {
+          if (!name.value.trim() || !owner.value.trim()) { toast("Isi nama toko dan pemilik dulu."); (name.value.trim() ? owner : name).focus(); return; }
+          decide("approve", { fields: { name: name.value.trim(), owner_name: owner.value.trim(), area: area.value, tier: tier.value, credit_limit: Number(limit.value) || 0 } });
+        } }, "Verifikasi pelanggan")));
   } else if (ACK_ONLY.has(a.kind)) {
     if (a.payload && a.payload.text) card.append(el("p", {}, `Pesan: "${a.payload.text}"`));
     card.append(el("div", { class: "row-actions" }, el("button", { type: "button", class: "btn", onclick: () => decide("approve") }, "Tandai sudah ditangani")));
@@ -387,10 +460,27 @@ async function viewChat() {
   const c = data.customer;
   const pick = (id) => { location.hash = `#/percakapan/${id}`; };
 
+  const unknownForm = (() => {
+    const num = el("input", { type: "text", id: "unk-num", inputmode: "tel", placeholder: "08xxxxxxxxxx", "data-keep": "unk-num" });
+    const msg = el("input", { type: "text", id: "unk-msg", placeholder: "indomie goreng 2 dus", "data-keep": "unk-msg" });
+    return el("details", { class: "panel panel-pad", style: "margin-bottom:12px" },
+      el("summary", { class: "small" }, "Simulasikan pesan dari nomor baru"),
+      el("form", { class: "stack", style: "margin-top:10px", onsubmit: async (e) => {
+        e.preventDefault();
+        try {
+          const r = await api("/api/simulator/unknown", { method: "POST", body: { handle: num.value, text: msg.value } });
+          app.customers = [];
+          location.hash = `#/percakapan/${r.customer_id}`;
+        } catch (err) { toast(err.message); }
+      } },
+        el("div", { class: "field" }, el("label", { for: "unk-num" }, "Nomor"), num),
+        el("div", { class: "field" }, el("label", { for: "unk-msg" }, "Pesan"), msg),
+        el("button", { type: "submit", class: "btn" }, "Kirim dari nomor ini")));
+  })();
   const list = el("nav", { class: "panel customer-list", "aria-label": "Daftar toko" }, app.customers.map((x) =>
     el("button", { type: "button", "aria-current": x.id === app.customerId ? "true" : null, onclick: () => pick(x.id) },
       el("span", {}, x.name),
-      el("span", { class: "sub" }, x.last_message ? `${x.last_message.direction === "in" ? "" : "Admin: "}${x.last_message.text}` : `${x.area} · tier ${x.tier}`))));
+      el("span", { class: "sub" }, x.verified === false ? "Belum diverifikasi" : x.last_message ? `${x.last_message.direction === "in" ? "" : "Admin: "}${x.last_message.text}` : `${x.area} · tier ${x.tier}`))));
   const select = el("div", { class: "field customer-select" }, el("label", { for: "cust-select" }, "Toko"),
     el("select", { id: "cust-select", onchange: (e) => pick(e.target.value) },
       app.customers.map((x) => el("option", { value: x.id, selected: x.id === app.customerId || null }, x.name))));
@@ -456,7 +546,8 @@ async function viewChat() {
     el("dt", {}, "Level otonomi"), el("dd", {}, `${c.autonomy_level} (${["shadow", "copilot", "autopilot"][c.autonomy_level]})`),
     el("dt", {}, "Limit kredit"), el("dd", { class: "num" }, rupiah(c.credit_limit)),
     el("dt", {}, "Piutang"), el("dd", { class: "num" }, rupiah(c.outstanding)),
-    el("dt", {}, "Lewat jatuh tempo"), el("dd", { class: "num" }, c.overdue_amount ? `${rupiah(c.overdue_amount)} (${c.max_overdue_days} hari)` : "tidak ada"));
+    el("dt", {}, "Lewat jatuh tempo"), el("dd", { class: "num" }, c.overdue_amount ? `${rupiah(c.overdue_amount)} (${c.max_overdue_days} hari)` : "tidak ada"),
+    el("dt", {}, "Saldo titipan"), el("dd", { class: "num" }, c.credit_balance ? rupiah(c.credit_balance) : "tidak ada"));
 
   const o = data.order;
   const orderCard = el("section", { class: "panel panel-pad", "aria-labelledby": "ord-title" },
@@ -476,7 +567,7 @@ async function viewChat() {
   return el("div", {},
     el("div", { class: "page-head" }, el("div", {}, el("h1", {}, "Percakapan"),
       el("p", {}, "Kirim pesan sebagai pemilik toko dan lihat agen membaca, mencocokkan, lalu memutuskan."))),
-    el("div", { class: "chat-layout" }, list,
+    el("div", { class: "chat-layout" }, el("div", {}, unknownForm, list),
       el("div", { class: "stack" }, select, chat),
       el("div", { class: "side" },
         el("section", { class: "panel panel-pad", "aria-labelledby": "cust-title" }, el("h2", { id: "cust-title", style: "margin-bottom:10px" }, "Profil toko"), facts,
@@ -553,6 +644,7 @@ async function viewAR() {
 // ---------- view: kas masuk ----------
 async function viewCash() {
   const data = await api("/api/bank");
+  if (!app.customers.length) app.customers = await api("/api/customers");
   const importFeed = async (btn) => {
     btn.disabled = true;
     try {
@@ -578,6 +670,7 @@ async function viewCash() {
         el("button", { type: "button", class: "btn btn-primary", disabled: waiting ? null : true, onclick: (e) => importFeed(e.currentTarget) },
           waiting ? `Impor ${waiting} mutasi bank` : "Tidak ada mutasi menunggu"))),
     el("p", { class: "muted small", style: "margin-bottom:12px" }, "Format CSV: tanggal (YYYY-MM-DD), keterangan, nominal, bank, ref."),
+    ["staf_ar", "supervisor"].includes(app.user.role) ? manualPaymentForm() : null,
     el("div", { class: "panel" }, data.transactions.length
       ? el("table", { class: "table cards" },
         el("thead", {}, el("tr", {}, el("th", {}, "Tanggal"), el("th", {}, "Keterangan"), el("th", { class: "right" }, "Nominal"), el("th", {}, "Status"), el("th", {}, "Pelanggan"))),
@@ -586,8 +679,79 @@ async function viewCash() {
           el("td", { "data-label": "Keterangan" }, t.description, el("div", { class: "muted small code" }, `${t.bank} · ${t.ref}`), t.note ? el("div", { class: "conf low" }, t.note) : null),
           el("td", { class: "right num", "data-label": "Nominal" }, rupiah(t.amount)),
           el("td", { "data-label": "Status" }, stamp(t.status === "MATCHED" ? "MATCHED_TX" : t.status)),
-          el("td", { "data-label": "Pelanggan" }, t.customer || "-")))))
+          el("td", { "data-label": "Pelanggan" }, t.customer || "-",
+            t.kind === "giro" && ["GIRO_PENDING", "MATCHED"].includes(t.status) && ["staf_ar", "supervisor"].includes(app.user.role)
+              ? el("div", {}, el("button", { type: "button", class: "btn btn-small", onclick: async (e) => {
+                const ok = await confirmDialog(`Giro ${rupiah(t.amount)} ditolak bank? Alokasinya dibatalkan dan tagihan dibuka lagi.`, "Tandai ditolak");
+                if (!ok) return;
+                try { await api(`/api/payments/${t.id}/bounce`, { method: "POST" }); toast("Giro ditandai ditolak."); await refreshState(); schedule(); render(false); }
+                catch (err) { toast(err.message); }
+              } }, "Tandai ditolak bank")) : null)))))
       : el("p", { class: "state-msg", style: "padding:16px" }, "Belum ada mutasi. Di halaman Percakapan, tekan \"Bayar tagihan\" untuk mensimulasikan transfer pelanggan.")));
+}
+
+function manualPaymentForm() {
+  const cust = el("select", { id: "mp-cust" }, el("option", { value: "" }, "Pilih pelanggan"),
+    app.customers.map((c) => el("option", { value: c.id }, `${c.name} (piutang ${rupiah(c.outstanding)})`)));
+  const kind = el("select", { id: "mp-kind" }, el("option", { value: "tunai" }, "Tunai lewat sales"), el("option", { value: "giro" }, "Giro"));
+  const amount = el("input", { type: "number", id: "mp-amount", min: "0", step: "1000" });
+  const collector = el("input", { type: "text", id: "mp-collector", placeholder: "nama sales" });
+  const due = el("input", { type: "date", id: "mp-due" });
+  const collectorF = el("div", { class: "field" }, el("label", { for: "mp-collector" }, "Disetor oleh"), collector);
+  const dueF = el("div", { class: "field", hidden: true }, el("label", { for: "mp-due" }, "Tanggal cair giro"), due);
+  kind.addEventListener("change", () => { const giro = kind.value === "giro"; dueF.hidden = !giro; collectorF.hidden = giro; });
+  const submit = el("button", { type: "submit", class: "btn btn-primary" }, "Catat pembayaran");
+  return el("details", { class: "panel panel-pad", style: "margin-bottom:16px" },
+    el("summary", {}, "Catat pembayaran tunai atau giro"),
+    el("form", { class: "stack", style: "margin-top:12px", onsubmit: async (e) => {
+      e.preventDefault();
+      if (!cust.value || !Number(amount.value)) { toast("Pilih pelanggan dan isi nominal."); return; }
+      if (kind.value === "giro" && !due.value) { toast("Isi tanggal cair giro."); due.focus(); return; }
+      submit.disabled = true;
+      try {
+        const r = await api("/api/payments/manual", { method: "POST", body: { customer_id: Number(cust.value), kind: kind.value,
+          amount: Number(amount.value), collector: collector.value, giro_due: kind.value === "giro" ? due.value : null } });
+        toast(r.status === "GIRO_PENDING" ? "Giro dicatat, dicocokkan otomatis saat tanggal cair." : "Setoran dicatat, agen kas masuk mencocokkan.");
+        await refreshState(); schedule(); render(false);
+      } catch (err) { toast(err.message); submit.disabled = false; }
+    } },
+      el("div", { class: "field" }, el("label", { for: "mp-cust" }, "Pelanggan"), cust),
+      el("div", { class: "field" }, el("label", { for: "mp-kind" }, "Jenis"), kind),
+      el("div", { class: "field" }, el("label", { for: "mp-amount" }, "Nominal (Rp)"), amount), collectorF, dueF,
+      el("div", { class: "row-actions" }, submit)));
+}
+
+// ---------- view: stok ----------
+async function viewStock() {
+  const rows = await api("/api/stock");
+  const canReceive = ["admin_order", "supervisor"].includes(app.user.role);
+  const receive = async (p, input, btn) => {
+    const qty = Number(input.value);
+    if (!qty) { toast("Isi jumlah barang masuk."); input.focus(); return; }
+    btn.disabled = true;
+    try {
+      await api("/api/stock/receive", { method: "POST", body: { product_id: p.id, qty, uom: p.pack_uom } });
+      toast(`${qty} ${p.pack_uom} ${p.name} masuk.${p.backorder ? " Agen membuat kiriman susulan untuk backorder." : ""}`);
+      await refreshState(); schedule(); render(false);
+    } catch (e) { toast(e.message); btn.disabled = false; }
+  };
+  const pack = (p, base) => (p.pack_factor > 1 && base % p.pack_factor === 0 ? `${base / p.pack_factor} ${p.pack_uom}` : `${base} ${p.base_uom}`);
+  return el("div", {},
+    el("div", { class: "page-head" }, el("div", {}, el("h1", {}, "Stok"),
+      el("p", {}, "Stok gudang dan backorder. Barang yang dicatat masuk langsung dipakai agen untuk kiriman susulan, mulai dari pesanan paling lama."))),
+    el("div", { class: "panel" }, el("table", { class: "table cards" },
+      el("thead", {}, el("tr", {}, el("th", {}, "Produk"), el("th", { class: "right" }, "Tersedia"), el("th", { class: "right" }, "Dipesan"),
+        el("th", { class: "right" }, "Backorder"), canReceive ? el("th", {}, "Barang masuk") : null)),
+      el("tbody", {}, rows.map((p) => {
+        const input = el("input", { type: "number", min: "0", step: "1", id: `rcv-${p.id}`, "aria-label": `Jumlah ${p.pack_uom} ${p.name} yang masuk`, style: "max-width:90px" });
+        return el("tr", {},
+          el("td", { "data-label": "Produk" }, p.name, el("div", { class: "muted small code" }, p.sku)),
+          el("td", { class: "right num", "data-label": "Tersedia" }, p.available <= 0 ? el("span", { class: "conf low" }, "habis") : pack(p, p.available)),
+          el("td", { class: "right num", "data-label": "Dipesan" }, p.reserved ? pack(p, p.reserved) : "-"),
+          el("td", { class: "right num", "data-label": "Backorder" }, p.backorder ? el("span", { class: "conf low" }, pack(p, p.backorder)) : "-"),
+          canReceive ? el("td", { "data-label": "Barang masuk" }, el("div", { class: "composer-row" }, input, el("span", { class: "small" }, p.pack_uom),
+            el("button", { type: "button", class: "btn btn-small", onclick: (e) => receive(p, input, e.currentTarget) }, "Catat masuk"))) : null);
+      })))));
 }
 
 // ---------- view: brief ----------

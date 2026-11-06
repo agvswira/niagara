@@ -15,7 +15,7 @@ from app.config import settings
 from app.models import KV, Customer, Invoice, Message, SalesOrder
 from app.tools.messaging import conversation_for
 from app.tools.orders import due_date_for, ship
-from app.tools.payments import import_bank_mutations
+from app.tools.payments import apply_balance, import_bank_mutations
 
 
 def inbound(s: Session, customer_id: int, text: str = "", kind: str = "text", media_path: str | None = None,
@@ -122,8 +122,11 @@ def deliver_due_orders(s: Session) -> list[str]:
         o.status = "INVOICED"
         customer = s.get(Customer, o.customer_id)
         n = s.query(Invoice).count() + 1
-        s.add(Invoice(number=f"INV-{today:%y%m%d}-{n:04d}", order_id=o.id, customer_id=o.customer_id, amount=o.total,
-                      issue_date=today, due_date=due_date_for(customer, today), status="OPEN"))
+        inv = Invoice(number=f"INV-{today:%y%m%d}-{n:04d}", order_id=o.id, customer_id=o.customer_id, amount=o.total,
+                      issue_date=today, due_date=due_date_for(customer, today), status="OPEN")
+        s.add(inv)
+        s.flush()
+        apply_balance(s, inv)
         done.append(o.number)
     s.flush()
     return done
@@ -135,6 +138,8 @@ def advance_days(s: Session, days: int = 1) -> dict:
         new = clock.now(s).replace(hour=8, minute=0, second=0) + timedelta(days=1)
         clock.set_now(s, new)
         delivered = deliver_due_orders(s)
+        events.emit(s, "schedule.giro", payload={"date": new.date().isoformat()})
+        events.emit(s, "schedule.stale", payload={"date": new.date().isoformat()})
         events.emit(s, "schedule.daily", payload={"date": new.date().isoformat()})
         log.append({"date": new.date().isoformat(), "delivered": delivered})
     return {"now": clock.now(s).isoformat(), "days": log}

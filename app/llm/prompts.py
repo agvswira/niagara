@@ -18,6 +18,10 @@ Aturan:
   "tambah aqua 2 dus" = tambah, "aqua kurangi 1 dus" = kurangi, "gak jadi aqua" = hapus, "batal ya" = batal_semua.
   Intent ubah_order. Bila tidak ada pesanan terbuka, "tambah X" adalah order baru.
 - Permintaan waktu kirim ("kirim kamis", "jangan dikirim sebelum tgl 12") isi requested_delivery, bukan promise.
+- Keluhan atas barang yang sudah datang ("indomie kurang 1 dus", "aqua 2 dus pecah", "barang belum sampai")
+  isi issues dan intent komplain. Itu BUKAN order baru.
+- "Sudah titip ke sales 2 juta" atau "bayar tunai" berarti cash_paid_to_sales = true dan cash_amount dalam rupiah,
+  intent klaim_bayar.
 """
 
 RERANK_SYSTEM = """Kamu memilih produk katalog yang paling cocok dengan tulisan pelanggan distributor.

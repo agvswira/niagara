@@ -40,6 +40,11 @@ def load_context(state: IntakeState, config) -> IntakeState:
     customer = s.get(Customer, s.get(Conversation, msg.conversation_id).customer_id)
     today = clock.today(s)
     waiting = latest_open_order(s, customer.id, WAITING_STATES)
+    ttl = policy.get(s, "conversation.question_ttl_hours")
+    if waiting and clock.now(s) - waiting.updated_at > timedelta(hours=ttl):
+        tracing.step("think", f"Pertanyaan untuk {waiting.number} sudah lebih dari {ttl} jam, pesan ini tidak dianggap jawaban",
+                     {"rule": "conversation.question_ttl_hours"})
+        waiting = None
     overdue = (s.query(Invoice).filter(Invoice.customer_id == customer.id, Invoice.status.in_(UNPAID),
                                        Invoice.due_date < today).count())
     recent_reminder = (s.query(Message).filter(Message.conversation_id == msg.conversation_id, Message.direction == "out",
@@ -77,7 +82,7 @@ def understand(state: IntakeState, config) -> IntakeState:
 
 TASK_NODE = {"bukti_bayar": "payment_proof", "jawab_pertanyaan": "resolve_answer", "ubah_order": "change_order",
              "order_baru": "build_lines", "janji_bayar": "promise", "klaim_bayar": "simple_reply",
-             "tanya_status": "simple_reply", "komplain": "simple_reply", "lainnya": "simple_reply"}
+             "tanya_status": "simple_reply", "komplain": "complaint", "lainnya": "simple_reply"}
 TASK_LABEL = {"bukti_bayar": "catat bukti transfer", "jawab_pertanyaan": "proses jawaban pelanggan",
               "ubah_order": "ubah pesanan yang ada", "order_baru": "susun order baru", "janji_bayar": "catat janji bayar",
               "klaim_bayar": "minta foto bukti transfer", "tanya_status": "jawab status pesanan",
@@ -349,7 +354,7 @@ def resolve_answer(state: IntakeState, config) -> IntakeState:
 
 
 MODIFIABLE = ("RECEIVED", "NEEDS_CLARIFICATION", "PENDING_REVIEW", "MATCHED", "SUBSTITUTION_OFFERED", "STOCK_CHECKED",
-              "ON_HOLD_CREDIT", "PENDING_APPROVAL", "CONFIRMED")
+              "ON_HOLD_CREDIT", "PENDING_APPROVAL", "CONFIRMED", "BACKORDERED")
 
 
 def _find_line(s: Session, order: SalesOrder, item: str, cid: int) -> SalesOrderLine | None:
@@ -517,6 +522,14 @@ def simple_reply(state: IntakeState, config) -> IntakeState:
     customer = s.get(Customer, cid)
     owner = customer.owner_name
     current = state.get("current") or u.intent
+    if current == "klaim_bayar" and u.cash_paid_to_sales:
+        request_approval(s, "klaim_tunai", "message", state["message_id"],
+                         f"{customer.name} bilang sudah bayar tunai lewat sales"
+                         + (f" sebesar Rp{u.cash_amount:,}".replace(",", ".") if u.cash_amount else "")
+                         + ". Cocokkan dengan setoran sales lalu catat.",
+                         {"amount": u.cash_amount, "customer_id": cid, "text": s.get(Message, state["message_id"]).text})
+        reply(s, customer, templates.cash_claim_ack(owner, u.cash_amount))
+        return {"outcome": "cash_claim"}
     if current == "klaim_bayar":
         from app.models import PaymentProof
 
@@ -551,10 +564,73 @@ def simple_reply(state: IntakeState, config) -> IntakeState:
     return {"outcome": current}
 
 
+def complaint(state: IntakeState, config) -> IntakeState:
+    """Turns 'indomie kurang 1 dus' into a claim on the last delivered order; anything vaguer goes to the admin."""
+    from app.tools.claims import KIND_LABEL, create_claim, recent_delivered_order
+
+    s = _session(config)
+    u, cid = state["u"], state["customer_id"]
+    customer = s.get(Customer, cid)
+    owner = customer.owner_name
+    text = s.get(Message, state["message_id"]).text
+    order = recent_delivered_order(s, cid)
+    concrete = [i for i in u.issues if i.kind in ("kurang", "rusak") and i.item]
+    missing = [i for i in u.issues if i.kind == "tidak_sampai"]
+    if missing:
+        target = latest_open_order(s, cid, ("CONFIRMED",)) or order
+        if target:
+            tracing.link("sales_order", target.id, cid)
+            request_approval(s, "complaint", "sales_order", target.id,
+                             f"{customer.name} bilang pesanan {target.number} belum sampai. Cek posisi ke sopir.", {"text": text})
+            reply(s, customer, templates.not_arrived_ack(owner, target))
+            if not concrete:
+                return {"outcome": "not_arrived"}
+    if not concrete or order is None:
+        request_approval(s, "complaint", "message", state["message_id"], "Keluhan pelanggan perlu ditangani admin.",
+                         {"text": text})
+        reply(s, customer, templates.complaint_ack(owner))
+        return {"outcome": "complaint"}
+
+    tracing.link("sales_order", order.id, cid)
+    rows, notes = [], []
+    for issue in concrete:
+        line = _find_line(s, order, issue.item, cid)
+        if line is None:
+            notes.append(f"\"{issue.item}\" tidak ada di pesanan {order.number}, admin kami cek manual.")
+            continue
+        qty_base = None
+        if issue.qty:
+            _, factor, _ = catalog.resolve_uom(s, line.product_id, issue.unit or line.uom, [])
+            qty_base = int(round(issue.qty * factor))
+        res = create_claim(s, order_id=order.id, kind=issue.kind, source="pelanggan", line_id=line.id,
+                           qty_base=qty_base, note=text)
+        if not res.ok:
+            notes.append(f"{line.product.name}: {res.message}")
+            continue
+        label = f"{line.product.name}, {KIND_LABEL[issue.kind]}"
+        if issue.qty:
+            label += f" {issue.qty:g} {issue.unit or line.uom}"
+        rows.append(label)
+        request_approval(s, "retur", "claim", res.data["claim_id"],
+                         f"{customer.name}: {label} pada {order.number}. Usulan nota kredit Rp{res.data['amount']:,}.".replace(",", "."),
+                         {"order": order.number, "amount": res.data["amount"], "kind": issue.kind})
+    if not rows:
+        request_approval(s, "complaint", "sales_order", order.id, "Keluhan pelanggan belum bisa dicocokkan ke barang.",
+                         {"text": text, "catatan": notes})
+        reply(s, customer, templates.complaint_ack(owner))
+        return {"outcome": "complaint"}
+    tracing.step("decision", f"{len(rows)} klaim dibuat, menunggu persetujuan admin",
+                 {"klaim": rows, "catatan": notes, "alasan": "Uang dan stok baru berubah setelah manusia menyetujui."})
+    reply(s, customer, templates.claim_received(owner, order, rows, notes))
+    tracing.summarize(f"Klaim {customer.name} atas {order.number}: {'; '.join(rows)}")
+    return {"outcome": "claim"}
+
+
 def _build():
     g = StateGraph(IntakeState)
     handlers = [("decide", decide), ("resolve_answer", resolve_answer), ("payment_proof", payment_proof),
-                ("promise", promise), ("simple_reply", simple_reply), ("change_order", change_order)]
+                ("promise", promise), ("simple_reply", simple_reply), ("change_order", change_order),
+                ("complaint", complaint)]
     for name, fn in [("load_context", load_context), ("understand", understand), ("plan", plan),
                      ("next_task", next_task), ("build_lines", build_lines), *handlers]:
         g.add_node(name, fn)
@@ -570,6 +646,27 @@ def _build():
 
 
 GRAPH = _build()
+
+
+@events.on("schedule.stale")
+def close_stale(s: Session, ev) -> None:
+    """Orders that waited too long for the customer's answer are closed so they do not block stock or the queue."""
+    hours = policy.get(s, "conversation.close_unanswered_hours")
+    cutoff = clock.now(s) - timedelta(hours=hours)
+    stale = (s.query(SalesOrder).filter(SalesOrder.status.in_(WAITING_STATES), SalesOrder.updated_at < cutoff,
+                                        SalesOrder.is_history.is_(False)).all())
+    if not stale:
+        return
+    with tracing.agent_run(s, "intake", event_id=ev.id):
+        for o in stale:
+            customer = s.get(Customer, o.customer_id)
+            o.pending_question = None
+            _close_approvals(s, o)
+            set_order_status(s, order_id=o.id, status="CANCELLED", actor="intake_agent", note="Tidak ada jawaban")
+            reply(s, customer, templates.order_closed_unanswered(customer.owner_name, o))
+        tracing.step("decision", f"{len(stale)} order ditutup karena tidak dijawab lebih dari {hours} jam",
+                     {"order": [o.number for o in stale]})
+        tracing.summarize(f"{len(stale)} order tanpa jawaban ditutup")
 
 
 @events.on("message.received")

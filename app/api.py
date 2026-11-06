@@ -11,12 +11,13 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from app import auth, clock, db, events, sim
+from app import auth, clock, db, events, onboarding, sim
 from app.agents.supervisor import build_brief
 from app.config import settings
 from app.llm.client import get_llm
 from app.models import (KV, AgentRun, AgentStep, Approval, BankTransaction, Conversation, Customer, CustomerContact,
-                        Event, Invoice, Message, Policy, Product, PromiseToPay, SalesOrder, SalesOrderLine, Stock, User)
+                        Claim, Event, Invoice, Message, Policy, Product, ProductUom, PromiseToPay, SalesOrder,
+                        SalesOrderLine, Stock, User)
 from app.policy import DEFAULT_POLICIES
 from app.tools import catalog
 from app.tools.credit import UNPAID, snapshot
@@ -175,7 +176,8 @@ def customers() -> list[dict]:
             out.append({"id": c.id, "name": c.name, "owner": c.owner_name, "area": c.area, "tier": c.tier,
                         "autonomy_level": c.autonomy_level, "persona": c.persona, "credit_limit": c.credit_limit,
                         "outstanding": snap["outstanding"], "max_overdue_days": snap["max_overdue_days"],
-                        "payment_score": round(c.payment_score, 2), "is_new": c.is_new,
+                        "payment_score": round(c.payment_score, 2), "is_new": c.is_new, "verified": c.verified,
+                        "credit_balance": c.credit_balance,
                         "last_message": {"text": last.text[:80], "direction": last.direction,
                                          "at": last.created_at.isoformat()} if last else None})
         return out
@@ -339,6 +341,16 @@ def approvals(request: Request, status: str = "PENDING") -> list[dict]:
             elif a.entity_type == "promise":
                 p = s.get(PromiseToPay, a.entity_id)
                 d["customer"] = s.get(Customer, p.customer_id).name
+            elif a.entity_type == "claim":
+                cl = s.get(Claim, a.entity_id)
+                d["customer"] = s.get(Customer, cl.customer_id).name
+                d["claim"] = {"kind": cl.kind, "amount": cl.amount, "qty_base": cl.qty_base, "source": cl.source,
+                              "product": s.get(Product, cl.product_id).name if cl.product_id else None,
+                              "order_id": cl.order_id, "order": s.get(SalesOrder, cl.order_id).number, "note": cl.note}
+            if a.kind == "pelanggan_baru":
+                c = s.get(Customer, a.entity_id)
+                d["customer_fields"] = {"name": c.name, "owner_name": c.owner_name, "area": c.area, "tier": c.tier,
+                                        "credit_limit": c.credit_limit}
             out.append(d)
         return out
 
@@ -355,6 +367,8 @@ class Decision(BaseModel):
     by: str = "admin"
     edits: list[LineEdit] = []
     customer_id: int | None = None
+    amount: int | None = None
+    fields: dict | None = None
 
 
 @app.post("/api/approvals/{aid}/decide")
@@ -395,6 +409,13 @@ def decide(aid: int, body: Decision, request: Request) -> dict:
             order.was_edited = True
         if a.kind == "unmatched_payment" and body.customer_id:
             a.payload = {**(a.payload or {}), "customer_id": body.customer_id}
+        if a.kind == "klaim_tunai" and body.amount:
+            a.payload = {**(a.payload or {}), "confirmed_amount": int(body.amount)}
+        if a.kind == "pelanggan_baru" and body.fields:
+            allowed = {k: body.fields[k] for k in ("name", "owner_name", "area", "tier", "credit_limit") if body.fields.get(k)}
+            if "tier" in allowed and allowed["tier"] not in ("A", "B", "C"):
+                raise HTTPException(422, "Tier harus A, B, atau C")
+            a.payload = {**(a.payload or {}), "fields": allowed}
         a.status = "APPROVED" if body.decision == "approve" else "REJECTED"
         a.decided_by, a.decided_at = user["username"], clock.now(s)
         events.emit(s, "approval.decided", "approval", a.id, {})
@@ -455,7 +476,7 @@ def bank() -> dict:
         feed = s.get(KV, "bank_feed")
         txs = s.query(BankTransaction).order_by(BankTransaction.id.desc()).limit(100).all()
         return {"feed_waiting": feed.value if feed else [],
-                "transactions": [{"id": t.id, "bank": t.bank, "date": t.tx_date.isoformat(), "amount": t.amount,
+                "transactions": [{"id": t.id, "bank": t.bank, "kind": t.kind, "date": t.tx_date.isoformat(), "amount": t.amount,
                                   "description": t.description, "ref": t.ref, "status": t.status,
                                   "customer": s.get(Customer, t.customer_id).name if t.customer_id else None,
                                   "note": t.match_note} for t in txs]}
@@ -590,10 +611,153 @@ async def telegram_webhook(request: Request) -> dict:
                     s.add(CustomerContact(customer_id=int(parts[1]), channel="telegram", handle=chat_id))
                 return {"ok": True}
         if contact is None:
-            return {"ok": True}
-        sim.inbound(s, contact.customer_id, text)
+            onboarding.inbound_from_unknown(s, "telegram", chat_id, text)
+        else:
+            sim.inbound(s, contact.customer_id, text)
     drain_bg()
     return {"ok": True}
+
+
+# ---------- warehouse, delivery reports, manual payments, new contacts ----------
+
+@app.get("/api/stock")
+def stock() -> list[dict]:
+    with db.session_scope() as s:
+        out = []
+        for p in s.query(Product).order_by(Product.category, Product.name):
+            st = s.query(Stock).filter_by(product_id=p.id).first()
+            uoms = {u.uom: u.factor for u in s.query(ProductUom).filter_by(product_id=p.id)}
+            big = max(uoms.items(), key=lambda kv: kv[1])
+            back = sum(ln.backorder_base for ln in s.query(SalesOrderLine).join(SalesOrder, SalesOrderLine.order_id == SalesOrder.id)
+                       .filter(SalesOrderLine.product_id == p.id, SalesOrder.status != "CANCELLED"))
+            out.append({"id": p.id, "sku": p.sku, "name": p.name, "category": p.category, "base_uom": p.base_uom,
+                        "pack_uom": big[0], "pack_factor": big[1], "on_hand": st.qty_on_hand, "reserved": st.qty_reserved,
+                        "available": st.qty_on_hand - st.qty_reserved, "backorder": back})
+        return out
+
+
+class Receive(BaseModel):
+    product_id: int
+    qty: float
+    uom: str | None = None
+
+
+@app.post("/api/stock/receive")
+def receive(body: Receive, request: Request) -> dict:
+    user = require_role(request, "admin_order", "supervisor")
+    from app.tools.orders import receive_stock
+
+    with db.session_scope() as s:
+        p = s.get(Product, body.product_id)
+        if p is None:
+            raise HTTPException(404, "Produk tidak ditemukan")
+        uom = s.query(ProductUom).filter_by(product_id=p.id, uom=body.uom or p.base_uom).first()
+        if uom is None:
+            raise HTTPException(422, "Satuan tidak dikenal untuk produk ini")
+        qty_base = int(round(body.qty * uom.factor))
+        res = receive_stock(s, product_id=p.id, qty_base=qty_base, ref=f"GR oleh {user['username']}", actor=user["username"])
+        if not res.ok:
+            raise HTTPException(422, res.message)
+        events.emit(s, "stock.received", "product", p.id, {"qty_base": qty_base})
+        data = res.data
+    drain_bg()
+    return data
+
+
+class DeliveryIssueIn(BaseModel):
+    kind: str
+    line_id: int | None = None
+    qty: float | None = None
+    note: str = ""
+
+
+@app.post("/api/orders/{oid}/delivery-issue")
+def delivery_issue(oid: int, body: DeliveryIssueIn, request: Request) -> dict:
+    """The driver's report: short, damaged, or refused at the store."""
+    user = require_role(request, "admin_order", "supervisor")
+    if body.kind not in ("kurang", "rusak", "ditolak"):
+        raise HTTPException(422, "Jenis harus kurang, rusak, atau ditolak")
+    from app.agents.common import request_approval
+    from app.tools.claims import KIND_LABEL, create_claim
+
+    with db.session_scope() as s:
+        qty_base = None
+        if body.line_id and body.qty:
+            ln = s.get(SalesOrderLine, body.line_id)
+            if ln is None or ln.order_id != oid:
+                raise HTTPException(422, "Barang bukan bagian dari order ini")
+            f = s.query(ProductUom).filter_by(product_id=ln.product_id, uom=ln.uom).first()
+            qty_base = int(round(body.qty * (f.factor if f else 1)))
+        res = create_claim(s, order_id=oid, kind=body.kind, source="sopir", line_id=body.line_id, qty_base=qty_base,
+                           note=body.note or f"laporan {user['username']}")
+        if not res.ok:
+            raise HTTPException(422, res.message)
+        order = s.get(SalesOrder, oid)
+        amount_text = f"Rp{res.data['amount']:,}".replace(",", ".")
+        request_approval(s, "retur", "claim", res.data["claim_id"],
+                         f"Laporan sopir: {KIND_LABEL[body.kind]} pada {order.number}. Usulan nota kredit {amount_text}.",
+                         {"order": order.number, "amount": res.data["amount"], "kind": body.kind})
+        data = res.data
+    return data
+
+
+class ManualPayment(BaseModel):
+    customer_id: int
+    kind: str
+    amount: int
+    collector: str = ""
+    giro_due: str | None = None
+
+
+@app.post("/api/payments/manual")
+def manual_payment(body: ManualPayment, request: Request) -> dict:
+    user = require_role(request, "staf_ar", "supervisor")
+    from app.tools.payments import record_manual_payment
+
+    with db.session_scope() as s:
+        if s.get(Customer, body.customer_id) is None:
+            raise HTTPException(404, "Pelanggan tidak ditemukan")
+        res = record_manual_payment(s, customer_id=body.customer_id, kind=body.kind, amount=body.amount,
+                                    actor=user["username"], collector=body.collector, giro_due=body.giro_due)
+        if not res.ok:
+            raise HTTPException(422, res.message)
+        if res.data["status"] == "NEW":
+            events.emit(s, "payment.manual_recorded", "bank_transaction", res.data["tx_id"], {})
+        data = res.data
+    drain_bg()
+    return data
+
+
+@app.post("/api/payments/{tx_id}/bounce")
+def bounce(tx_id: int, request: Request) -> dict:
+    user = require_role(request, "staf_ar", "supervisor")
+    from app.tools.payments import bounce_payment
+
+    with db.session_scope() as s:
+        res = bounce_payment(s, tx_id=tx_id, actor=user["username"])
+        if not res.ok:
+            raise HTTPException(422, res.message)
+        events.emit(s, "payment.bounced", "bank_transaction", tx_id, res.data)
+        data = res.data
+    drain_bg()
+    return data
+
+
+class UnknownMessage(BaseModel):
+    handle: str
+    text: str
+
+
+@app.post("/api/simulator/unknown")
+def sim_unknown(body: UnknownMessage) -> dict:
+    handle = "".join(ch for ch in body.handle if ch.isdigit() or ch == "+")[:20]
+    if len(handle) < 8 or not body.text.strip():
+        raise HTTPException(422, "Isi nomor (minimal 8 digit) dan pesannya")
+    with db.session_scope() as s:
+        c = onboarding.inbound_from_unknown(s, "simulator", handle, body.text.strip())
+        cid = c.id
+    drain_bg()
+    return {"customer_id": cid}
 
 
 @app.get("/")

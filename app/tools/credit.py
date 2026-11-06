@@ -29,6 +29,7 @@ def snapshot(s: Session, customer_id: int) -> dict:
         "max_overdue_days": max_overdue,
         "avg_order_value": round(avg),
         "broken_promises": broken,
+        "credit_balance": s.get(Customer, customer_id).credit_balance,
     }
 
 

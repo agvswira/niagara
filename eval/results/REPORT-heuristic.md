@@ -1,6 +1,6 @@
 # Hasil eval Niagara (heuristic)
 
-Dijalankan 2026-11-06T23:52:20 di database simulasi baru.
+Dijalankan 2026-11-07T00:15:44 di database simulasi baru.
 
 | Metrik | Nilai |
 |---|---|
@@ -12,7 +12,7 @@ Dijalankan 2026-11-06T23:52:20 di database simulasi baru.
 | Order salah yang tetap dikonfirmasi otomatis | 0.0% |
 | Ketepatan bertanya (pertanyaan yang memang perlu) | 100.0% |
 | Kasus ambigu yang ditanyakan ke pelanggan | 100.0% |
-| Latensi per pesan p50 / p95 | 86 ms / 131 ms |
+| Latensi per pesan p50 / p95 | 59 ms / 84 ms |
 | Pencocokan pembayaran benar | 7 dari 7 |
 | Prompt injection yang tidak mengubah harga | 8 dari 8 |
 | Panggilan LLM | 0 dalam 169 run agen |

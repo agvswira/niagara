@@ -115,8 +115,15 @@ def proof_received(owner: str, amount: int | None) -> str:
     return f"Terima kasih {owner}, bukti transfer{amt} sudah kami terima. Kami cocokkan dengan mutasi bank dulu, nanti kami kabari."
 
 
-def payment_applied(owner: str, amount: int, invoices: list[str], released: list[tuple[str, date | None]]) -> str:
-    msg = f"Pembayaran {rupiah(amount)} sudah masuk dan kami catat untuk {', '.join(invoices)}. Terima kasih {owner}."
+def payment_applied(owner: str, amount: int, invoices: list[str], released: list[tuple[str, date | None]],
+                    balance_added: int = 0) -> str:
+    if invoices:
+        msg = f"Pembayaran {rupiah(amount)} sudah masuk dan kami catat untuk {', '.join(invoices)}. Terima kasih {owner}."
+    else:
+        msg = f"Pembayaran {rupiah(amount)} sudah masuk. Terima kasih {owner}."
+    if balance_added:
+        msg += (f"\n\nKelebihan {rupiah(balance_added)} kami simpan sebagai saldo titipan dan otomatis dipakai"
+                f" untuk tagihan berikutnya.")
     for number, d in released:
         msg += f"\n\nPesanan {number} sekarang kami jadwalkan kirim {tanggal(d)}." if d else f"\n\nPesanan {number} kami proses sekarang."
     return msg
@@ -172,6 +179,64 @@ def order_cancelled(owner: str, order) -> str:
 def already_shipped(owner: str, order) -> str:
     return (f"{owner}, pesanan {order.number} sudah dikirim jadi tidak bisa diubah lagi dari sini."
             f" Admin kami akan menghubungi untuk retur atau tambahan pesanan.")
+
+
+def claim_received(owner: str, order, rows: list[str], notes: list[str]) -> str:
+    body = "\n".join(f"• {r}" for r in rows)
+    msg = f"Maaf atas kendalanya, {owner}. Keluhan untuk pesanan {order.number} sudah kami catat:\n\n{body}"
+    msg += "\n\nAdmin kami cek dulu. Bila disetujui, nilainya langsung memotong tagihan."
+    if notes:
+        msg += "\n\n" + "\n".join(notes)
+    return msg
+
+
+def claim_approved(owner: str, cn: dict) -> str:
+    parts = [f"{owner}, klaim disetujui. Nota kredit {cn['credit_note']} sebesar {rupiah(cn['amount'])}"]
+    if cn["to_invoice"] and cn["invoice"]:
+        parts.append(f" memotong tagihan {cn['invoice']} sebesar {rupiah(cn['to_invoice'])}")
+    if cn["to_balance"]:
+        parts.append(f"{' dan' if cn['to_invoice'] else ''} {rupiah(cn['to_balance'])} kami simpan sebagai saldo titipan")
+    return "".join(parts) + "."
+
+
+def claim_rejected(owner: str, order_number: str) -> str:
+    return f"{owner}, keluhan untuk pesanan {order_number} belum bisa kami setujui. Admin kami akan menghubungi untuk penjelasannya."
+
+
+def not_arrived_ack(owner: str, order) -> str:
+    when = f" (jadwal {tanggal(order.delivery_date)})" if order.delivery_date else ""
+    return f"Maaf, {owner}. Pesanan {order.number}{when} kami cek ke sopir sekarang, nanti kami kabari posisinya."
+
+
+def cash_claim_ack(owner: str, amount: int | None) -> str:
+    amt = f" {rupiah(amount)}" if amount else ""
+    return (f"Terima kasih {owner}. Pembayaran tunai{amt} lewat sales kami cocokkan dengan setoran sales dulu,"
+            f" nanti kami kabari begitu tercatat.")
+
+
+def backorder_only(owner: str, order, notes: list[str]) -> str:
+    msg = (f"{owner}, pesanan {order.number} sudah kami catat, tapi semua barangnya sedang kosong."
+           f" Begitu stok masuk, langsung kami kirim dan kami kabari jadwalnya.")
+    return msg + ("\n\n" + "\n".join(notes) if notes else "")
+
+
+def giro_bounced(owner: str, amount: int, invoices: list[str]) -> str:
+    inv = f" Tagihan {', '.join(invoices)} kembali terbuka." if invoices else ""
+    return f"{owner}, giro sebesar {rupiah(amount)} ditolak bank.{inv} Mohon dibantu pembayaran pengganti."
+
+
+def welcome_unknown(handle: str) -> str:
+    return ("Halo, terima kasih sudah menghubungi kami. Nomor ini belum terdaftar sebagai pelanggan."
+            " Mohon kirim nama toko dan alamatnya. Pesanan tetap kami catat dan diproses setelah tim kami memverifikasi.")
+
+
+def welcome_verified(owner: str, name: str) -> str:
+    return f"Halo {owner}, {name} sudah terdaftar. Pesanan berikutnya langsung kami proses."
+
+
+def order_closed_unanswered(owner: str, order) -> str:
+    return (f"{owner}, pesanan {order.number} kami tutup karena belum ada jawaban. Kalau masih perlu,"
+            f" kirim ulang pesanannya ya.")
 
 
 def handoff(owner: str) -> str:

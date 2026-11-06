@@ -339,7 +339,7 @@ textarea { min-height: 72px; resize: vertical; }
   body { font-size: 15px; }
   .topbar { grid-template-columns: 1fr auto; padding: 10px 16px; gap: 8px; }
   .clock { grid-column: 1 / -1; grid-row: 2; justify-self: start; }
-  .mode, .top-actions .who { display: none; }
+  .mode, .top-actions .who, .company { display: none; }
   .top-actions { gap: 0; }
   .menu-toggle { display: inline-flex; align-items: center; }
   .nav { display: none; flex-direction: column; grid-column: 1 / -1; margin: 0 -16px; border-top: 1px solid var(--line); }

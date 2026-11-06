@@ -22,6 +22,8 @@ class Customer(Base):
     is_new: Mapped[bool] = mapped_column(Boolean, default=False)
     persona: Mapped[str] = mapped_column(String(40), default="rapi")
     bank_account_name: Mapped[str] = mapped_column(String(120), default="")
+    credit_balance: Mapped[int] = mapped_column(Integer, default=0)  # saldo titipan from overpayments and credit notes
+    verified: Mapped[bool] = mapped_column(Boolean, default=True)
     contacts: Mapped[list["CustomerContact"]] = relationship(back_populates="customer")
 
 
@@ -93,6 +95,7 @@ class SalesOrder(Base):
     hold_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     requested_delivery: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     requested_not_before: Mapped[bool] = mapped_column(Boolean, default=False)
+    parent_order_id: Mapped[Optional[int]] = mapped_column(ForeignKey("sales_orders.id"), nullable=True)
     requested_discount_pct: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     was_edited: Mapped[bool] = mapped_column(Boolean, default=False)
     auto_processed: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -168,7 +171,8 @@ class BankTransaction(Base):
     amount: Mapped[int] = mapped_column(Integer)
     description: Mapped[str] = mapped_column(String(200))
     ref: Mapped[str] = mapped_column(String(60), unique=True)
-    status: Mapped[str] = mapped_column(String(20), default="NEW")  # NEW / MATCHED / UNMATCHED
+    status: Mapped[str] = mapped_column(String(20), default="NEW")  # NEW / MATCHED / UNMATCHED / GIRO_PENDING / BOUNCED
+    kind: Mapped[str] = mapped_column(String(10), default="transfer")  # transfer / tunai / giro
     customer_id: Mapped[Optional[int]] = mapped_column(ForeignKey("customers.id"), nullable=True)
     match_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     candidates: Mapped[Optional[list[dict[str, Any]]]] = mapped_column(JSON, nullable=True)
@@ -186,6 +190,35 @@ class PaymentProof(Base):
     ref: Mapped[str] = mapped_column(String(60), default="")
     status: Mapped[str] = mapped_column(String(20), default="AWAITING_MUTATION")
     bank_tx_id: Mapped[Optional[int]] = mapped_column(ForeignKey("bank_transactions.id"), nullable=True)
+
+
+class Claim(Base):
+    """A delivery problem reported by the customer or the driver: short, damaged, or refused goods."""
+    __tablename__ = "claims"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    order_id: Mapped[int] = mapped_column(ForeignKey("sales_orders.id"))
+    customer_id: Mapped[int] = mapped_column(ForeignKey("customers.id"))
+    kind: Mapped[str] = mapped_column(String(20))  # kurang / rusak / ditolak
+    product_id: Mapped[Optional[int]] = mapped_column(ForeignKey("products.id"), nullable=True)
+    qty_base: Mapped[int] = mapped_column(Integer, default=0)
+    amount: Mapped[int] = mapped_column(Integer, default=0)
+    source: Mapped[str] = mapped_column(String(20))  # pelanggan / sopir
+    note: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(20), default="OPEN")
+    created_at: Mapped[datetime] = mapped_column(DateTime)
+
+
+class CreditNote(Base):
+    __tablename__ = "credit_notes"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    number: Mapped[str] = mapped_column(String(30), unique=True)
+    customer_id: Mapped[int] = mapped_column(ForeignKey("customers.id"))
+    claim_id: Mapped[Optional[int]] = mapped_column(ForeignKey("claims.id"), nullable=True)
+    invoice_id: Mapped[Optional[int]] = mapped_column(ForeignKey("invoices.id"), nullable=True)
+    amount: Mapped[int] = mapped_column(Integer)
+    to_invoice: Mapped[int] = mapped_column(Integer, default=0)
+    to_balance: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime)
 
 
 class PaymentAllocation(Base):

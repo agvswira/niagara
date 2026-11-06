@@ -4,7 +4,7 @@ import json
 import re
 from datetime import date
 
-from app.llm.schemas import (DeliveryRequest, OrderChange, OrderLine, PaymentProof, Promise, Replacement, RerankResult,
+from app.llm.schemas import (DeliveryIssue, DeliveryRequest, OrderChange, OrderLine, PaymentProof, Promise, Replacement, RerankResult,
                              Understanding)
 
 UNIT_MAP = {
@@ -42,7 +42,20 @@ DISCOUNT_RE = re.compile(r"(?:diskon|potongan|disc|discount)\s*(?:jadi\s*)?(\d+(
 SUSPICIOUS_RE = re.compile(r"abaikan|ignore|lupakan (semua )?aturan|system prompt|kamu sekarang|override|instruksi sebelumnya|jailbreak")
 PAY_CLAIM_RE = re.compile(r"\b(tf|transfer|trf|sudah bayar|udah bayar|sdh bayar|sudah saya bayar|sudah ditransfer|sudah tf|udah tf|bukti)\b")
 PAY_WORD_RE = re.compile(r"\b(bayar|dibayar|transfer|tf|lunas|lunasi|cicil|nyicil|tagihan|nota)\b")
-COMPLAINT_RE = re.compile(r"\b(rusak|pecah|bocor|kurang kirim|salah kirim|komplain|kadaluarsa|expired|penyok)\b")
+COMPLAINT_RE = re.compile(r"\b(rusak|pecah|bocor|kurang kirim|salah kirim|komplain|kadaluarsa|expired|penyok"
+                          r"|belum sampai|belum datang|tidak sampai)\b")
+DAMAGE_WORDS = r"(?:rusak|pecah|bocor|penyok|kadaluarsa|kedaluwarsa|expired|sobek)"
+QTY = r"(?P<qty>\d+(?:[.,]\d+)?)\s*(?P<unit>[a-z]+)?"
+ISSUE_PATTERNS = [
+    ("kurang", re.compile(rf"^(?P<item>[a-z][a-z0-9 ]*?)\s+(?:kurang kirim|kurang)\s+{QTY}$")),
+    ("kurang", re.compile(rf"^(?:kurang kirim|kurang)\s+{QTY}\s+(?P<item>[a-z][a-z0-9 ]+)$")),
+    ("rusak", re.compile(rf"^(?P<item>[a-z][a-z0-9 ]*?)\s+{QTY}\s+{DAMAGE_WORDS}$")),
+    ("rusak", re.compile(rf"^{QTY}\s+(?P<item>[a-z][a-z0-9 ]*?)\s+{DAMAGE_WORDS}$")),
+    ("rusak", re.compile(rf"^(?P<item>[a-z][a-z0-9 ]*?)\s+{DAMAGE_WORDS}\s+{QTY}$")),
+    ("tidak_sampai", re.compile(r"^(?:pesanan|barang|kiriman|order)?\s*(?:kemarin\s+)?(?:belum|tidak|gak|ga)\s+(?:sampai|datang)$")),
+]
+CASH_RE = re.compile(r"\b(?:titip|titipkan|kasih|kasihkan|bayar|serahkan|setor)\w*\s+(?:\w+\s+)?(?:ke|sama|lewat|via)\s+"
+                     r"(?:sales|salesnya|mas sales|kurir|sopir)\b|\b(?:tunai|cash)\b")
 STATUS_RE = re.compile(r"\b(kapan (dikirim|sampai|datang)|sudah dikirim|udah dikirim|status|posisi barang)\b")
 CHANGE_RE = re.compile(r"^\s*(tambah|tambahin|kurangi|kurangin|batal|cancel|ralat)\b")
 YES_RE = re.compile(r"^\s*(ya+|iya+|yes|oke+|ok|boleh|setuju|gpp|nggak papa|ga papa|siap|lanjut|gas)\b")
@@ -182,9 +195,16 @@ def parse_message(text: str, today: date | None = None) -> dict:
     chunks = re.split(r"\n|,|;|\+|&|[.?!](?=\s|$)|\btapi\b|\bdan\b|\bsama\b|\bterus\b|\bkalih\b|\bambek\b|\bkaro\b|\blan\b|\bplus\b", t)
     lines: list[OrderLine] = []
     changes: list[OrderChange] = []
+    issues: list[DeliveryIssue] = []
     for ch in chunks:
         bare = _strip_filler(ch)
         if not bare:
+            continue
+        issue = _parse_issue(bare)
+        if issue:
+            issues.append(issue)
+            continue
+        if CASH_RE.search(bare):
             continue
         if CANCEL_ALL_RE.match(bare):
             changes.append(OrderChange(op="batal_semua"))
@@ -217,7 +237,33 @@ def parse_message(text: str, today: date | None = None) -> dict:
             continue
         lines.append(ln)
     return {"lines": lines, "replacements": replacements, "removals": removals, "uses_usual": uses_usual,
-            "changes": changes, "delivery": delivery, "text": t}
+            "changes": changes, "delivery": delivery, "issues": issues, "text": t}
+
+
+def _parse_issue(bare: str) -> DeliveryIssue | None:
+    for kind, rx in ISSUE_PATTERNS:
+        m = rx.match(bare)
+        if not m:
+            continue
+        gd = m.groupdict()
+        item = _strip_filler(gd.get("item") or "")
+        item = re.sub(r"^(?:barang|kiriman)\s+", "", item) or None
+        qty = float(gd["qty"].replace(",", ".")) if gd.get("qty") else None
+        return DeliveryIssue(kind=kind, item=item, qty=qty, unit=UNIT_MAP.get(gd.get("unit") or ""))
+    return None
+
+
+def parse_cash_amount(t: str) -> int | None:
+    ma = re.search(r"(\d+(?:[.,]\d+)?)\s*(jt|juta)", t)
+    if ma:
+        return int(float(ma.group(1).replace(",", ".")) * 1_000_000)
+    mr = re.search(r"(\d+)\s*(rb|ribu)", t)
+    if mr:
+        return int(mr.group(1)) * 1000
+    mrp = re.search(r"rp\.?\s*([\d.]{4,})", t)
+    if mrp:
+        return int(mrp.group(1).replace(".", ""))
+    return None
 
 
 def parse_order_lines(text: str) -> tuple[list[OrderLine], list[Replacement], list[str], bool]:
@@ -313,7 +359,8 @@ def understand(text: str, kind: str = "text", media_path: str | None = None, ctx
         intents.append("ubah_order")
     if lines or p["uses_usual"] or p["replacements"]:
         intents.append("order_baru")
-    if PAY_CLAIM_RE.search(t) and not proof:
+    cash = bool(CASH_RE.search(t)) and not proof
+    if (PAY_CLAIM_RE.search(t) or cash) and not proof:
         intents.append("klaim_bayar")
     promise = parse_promise(p["text"], today)
     if promise and (PAY_WORD_RE.search(t) or (ctx.get("in_collection") and not explicit and not p["uses_usual"])):
@@ -322,7 +369,7 @@ def understand(text: str, kind: str = "text", media_path: str | None = None, ctx
         promise = None
     if STATUS_RE.search(t):
         intents.append("tanya_status")
-    if COMPLAINT_RE.search(t):
+    if COMPLAINT_RE.search(t) or p["issues"]:
         intents.append("komplain")
     if not intents:
         intents.append("lainnya")
@@ -330,7 +377,8 @@ def understand(text: str, kind: str = "text", media_path: str | None = None, ctx
     return Understanding(intent=intents[0], also_intents=intents[1:], lines=lines, changes=changes,
                          requested_delivery=p["delivery"], uses_usual_order=p["uses_usual"],
                          replacements=p["replacements"], removals=p["removals"], promise=promise,
-                         payment_proof=proof, **base)
+                         payment_proof=proof, issues=p["issues"], cash_paid_to_sales=cash,
+                         cash_amount=parse_cash_amount(t) if cash else None, **base)
 
 
 def rerank(raw: str, candidates: list[dict], usual_ids: set[int]) -> RerankResult:
