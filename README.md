@@ -59,10 +59,15 @@ Di Windows, letakkan virtualenv di path yang pendek (misalnya `C:\venvs\niagara`
 
 ### Mode LLM
 
-- **Dengan `GEMINI_API_KEY`**: pesan dibaca Gemini (teks, foto nota, dan pesan suara) dengan output terstruktur, plus model cadangan bila model utama gagal.
-- **Tanpa API key**: Niagara memakai parser aturan di `app/llm/heuristic.py`. Foto yang dibuat simulator menyimpan isinya di metadata PNG, jadi mode ini bisa membaca foto simulasi tanpa OCR. Foto asli dan pesan suara butuh mode Gemini.
+Niagara tidak terikat ke satu penyedia. `LLM_CHAIN` menentukan urutan yang dicoba, dan penyedia tanpa key dilewati:
 
-Mode yang sedang aktif tampil di pojok kanan atas dashboard.
+- **Penyedia berformat OpenAI** (`OPENAI_COMPAT_*`): Groq secara bawaan, tapi bisa diarahkan ke OpenRouter, OpenAI, Together, atau Ollama lokal hanya dengan mengganti URL dan nama model. Output dipaksa berupa JSON sesuai skema; kalau JSON-nya tidak valid, model diminta memperbaikinya sekali. Foto butuh `OPENAI_COMPAT_VISION_MODEL` dan pesan suara butuh `OPENAI_COMPAT_AUDIO_MODEL`; tanpa itu, foto dan suara langsung diteruskan ke penyedia berikutnya.
+- **Gemini** (`GEMINI_*`): membaca teks, foto, dan suara, dengan model cadangan di dalamnya.
+- **Parser offline** (`app/llm/heuristic.py`) selalu menjadi lapis terakhir. Foto dari simulator menyimpan isinya di metadata PNG, jadi mode ini bisa membaca foto simulasi tanpa OCR.
+
+Penyedia yang mengembalikan HTTP 429 (limit) dijeda sesuai `Retry-After` atau 60 detik, jadi pesan berikutnya langsung ke penyedia selanjutnya tanpa menunggu. Hanya Intake Agent yang memanggil LLM: satu panggilan per pesan, ditambah satu bila nama barang ambigu. Agen lain tidak memakai kuota.
+
+Rantai aktif, jumlah panggilan per penyedia hari ini, dan penyedia yang sedang dijeda terlihat di `/api/state`; ringkasannya tampil di pojok kanan atas dashboard. Untuk hemat kuota, jalankan tes dan eval offline (`--provider heuristic`) dan simpan kuota untuk demo dan penjurian.
 
 ## Mencoba skenario demo
 
@@ -93,10 +98,10 @@ Setiap order punya tombol **Buka jejak lengkap** yang menampilkan semua langkah 
 ## Eval
 
 ```bash
-python -m eval.run_eval --provider heuristic   # atau --provider gemini
+python -m eval.run_eval --provider heuristic   # atau llm (rantai dari .env), compat, gemini
 ```
 
-Selain eval di bawah, `tests/` berisi 36 tes alur dan API (ubah dan batal order, tanggal kirim, pesan ganda, barang di luar katalog, backorder, klaim dan nota kredit, saldo titipan, tunai dan giro, nomor baru, pertanyaan kedaluwarsa, login, peran, penyamaran data).
+Selain eval di bawah, `tests/` berisi 43 tes alur dan API (rantai penyedia LLM dan jeda saat limit, ubah dan batal order, tanggal kirim, pesan ganda, barang di luar katalog, backorder, klaim dan nota kredit, saldo titipan, tunai dan giro, nomor baru, pertanyaan kedaluwarsa, login, peran, penyamaran data).
 
 Eval menjalankan agen yang sama di database baru lalu menilai tiga hal: pemahaman order (52 pesan di `eval/datasets/orders.jsonl`, termasuk 7 yang sengaja ambigu), pencocokan pembayaran (7 situasi: persis, kombinasi, biaya transfer, sebagian, dikenali dari nama rekening, pengirim tak dikenal, bukti tanpa mutasi), dan 8 percobaan prompt injection. Hasil ditulis ke `eval/results/REPORT-<mode>.md`.
 
@@ -112,7 +117,7 @@ python -m pytest -q
 
 ## Deploy
 
-Repo ini punya `Dockerfile` dan `render.yaml`. Di Render: New, Blueprint, pilih repo ini, isi `GEMINI_API_KEY`. Catatan: di paket gratis disk tidak permanen, jadi data simulasi kembali ke awal setiap kali layanan restart. Untuk data permanen, arahkan `DATABASE_URL` ke Postgres (misalnya Supabase).
+Repo ini punya `Dockerfile` dan `render.yaml`. Di Render: New, Blueprint, pilih repo ini, lalu isi `OPENAI_COMPAT_API_KEY` dan/atau `GEMINI_API_KEY`. Catatan: di paket gratis disk tidak permanen, jadi data simulasi kembali ke awal setiap kali layanan restart. Untuk data permanen, arahkan `DATABASE_URL` ke Postgres (misalnya Supabase).
 
 ## Struktur
 

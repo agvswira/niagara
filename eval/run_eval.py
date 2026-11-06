@@ -224,7 +224,8 @@ def pct(x: float) -> str:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--provider", choices=["gemini", "heuristic"])
+    ap.add_argument("--provider", choices=["llm", "compat", "gemini", "heuristic"],
+                    help="llm = rantai penyedia dari .env; compat atau gemini = satu penyedia saja")
     args = ap.parse_args()
     service = LLMService(args.provider) if args.provider else LLMService()
     set_llm(service)

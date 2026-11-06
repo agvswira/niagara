@@ -131,7 +131,7 @@ async function refreshState() {
     app.state = s;
     $("#clock").textContent = tgl(s.now, true);
     $("#company").textContent = s.company;
-    $("#mode").textContent = s.llm_mode === "gemini" ? `Model: ${s.model}` : "Mode offline (parser aturan, tanpa LLM)";
+    $("#mode").textContent = s.llm_mode === "llm" ? `Model: ${s.llm_label}${(s.llm_status || []).some((p) => p.cooling_seconds) ? " (ada yang dijeda karena limit)" : ""}` : "Mode offline (parser aturan, tanpa LLM)";
     $("#count-approvals").textContent = s.approvals_pending || "";
     $("#count-unmatched").textContent = s.unmatched_payments || "";
     return s;

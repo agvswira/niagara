@@ -4,7 +4,17 @@ services:
     runtime: docker
     plan: free
     envVars:
+      - key: LLM_CHAIN
+        value: compat,gemini
+      - key: OPENAI_COMPAT_API_KEY
+        sync: false
+      - key: OPENAI_COMPAT_MODEL
+        value: openai/gpt-oss-120b
       - key: GEMINI_API_KEY
         sync: false
       - key: GEMINI_MODEL
         value: gemini-2.5-flash
+      - key: NIAGARA_DEMO_PASSWORD
+        sync: false
+      - key: NIAGARA_SECRET
+        generateValue: true

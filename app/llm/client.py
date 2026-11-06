@@ -1,60 +1,85 @@
-"""LLM facade: Gemini with a fallback model, then the offline heuristic. Callers never see a provider error."""
+"""LLM facade: a chain of providers (for example Groq, then Gemini), then the offline parser.
+A provider that hits its rate limit is skipped for a while instead of being retried on every message.
+Callers never see a provider error."""
 
 import json
-import mimetypes
-from pathlib import Path
 
 from app import tracing
 from app.config import settings
 from app.llm import heuristic
 from app.llm.prompts import RERANK_SYSTEM, UNDERSTAND_SYSTEM
+from app.llm.providers import GeminiProvider, OpenAICompatProvider, Provider, RateLimited, Unsupported
 from app.llm.schemas import RerankResult, Understanding
 from app.privacy import redact
 
 
-class LLMService:
-    def __init__(self, provider: str | None = None):
-        self.provider = provider or settings.llm_provider
-        self._client = None
-        if self.provider == "gemini":
-            from google import genai
+def build_providers(only: str | None = None) -> list[Provider]:
+    built: dict[str, Provider] = {}
+    if settings.compat_api_key or settings.compat_base_url.startswith("http://localhost"):
+        built["compat"] = OpenAICompatProvider(settings.compat_name, settings.compat_base_url, settings.compat_api_key,
+                                               settings.compat_model, settings.compat_vision_model,
+                                               settings.compat_audio_model, settings.llm_timeout_seconds)
+    if settings.gemini_api_key:
+        built["gemini"] = GeminiProvider(settings.gemini_api_key, [settings.gemini_model, settings.gemini_fallback_model],
+                                         settings.llm_timeout_seconds)
+    order = [only] if only else [p.strip() for p in settings.llm_chain.split(",") if p.strip()]
+    return [built[name] for name in order if name in built]
 
-            self._client = genai.Client(api_key=settings.gemini_api_key)
+
+class LLMService:
+    def __init__(self, provider: str | None = None, providers: list[Provider] | None = None):
+        choice = provider or settings.llm_provider
+        if providers is not None:
+            self.providers = providers
+        elif choice == "heuristic":
+            self.providers = []
+        else:
+            self.providers = build_providers(choice if choice in ("compat", "gemini") else None)
 
     @property
     def mode(self) -> str:
-        return self.provider
+        return "llm" if self.providers else "heuristic"
 
-    def _generate(self, system: str, parts: list, schema):
-        from google.genai import types
+    @property
+    def label(self) -> str:
+        return " lalu ".join(p.label for p in self.providers) if self.providers else "parser offline"
 
-        config = types.GenerateContentConfig(system_instruction=system, response_mime_type="application/json",
-                                             response_schema=schema, temperature=0)
-        last_exc = None
-        for model in (settings.gemini_model, settings.gemini_fallback_model):
+    def status(self) -> list[dict]:
+        return [p.status() for p in self.providers]
+
+    def _generate(self, system: str, text: str, schema, media_path: str | None = None, kind: str = "text"):
+        tried = []
+        for p in self.providers:
+            if p.cooling():
+                tried.append(f"{p.name}: jeda karena limit")
+                continue
             try:
                 with tracing.Timer() as t:
-                    resp = self._client.models.generate_content(model=model, contents=parts, config=config)
+                    parsed = p.generate(system, text, schema, media_path, kind)
                 tracing.count_llm_call()
-                parsed = resp.parsed if resp.parsed is not None else schema.model_validate_json(resp.text)
-                return parsed, model, t.ms
-            except Exception as exc:  # network, quota, or schema errors: try the next model
-                last_exc = exc
-                tracing.step("error", f"LLM {model} gagal, mencoba cadangan", {"error": str(exc)[:300]}, ok=False)
-        raise RuntimeError(f"Semua model gagal: {last_exc}")
+                p.last_error = None
+                return parsed, p.label, t.ms
+            except RateLimited as exc:
+                p.cool_down(exc.retry_after or 60)
+                p.last_error = str(exc)[:200]
+                tried.append(f"{p.name}: limit, dijeda {int(exc.retry_after or 60)} detik")
+            except Unsupported as exc:
+                tried.append(str(exc))
+            except Exception as exc:
+                p.last_error = str(exc)[:200]
+                tried.append(f"{p.name}: {str(exc)[:160]}")
+            tracing.step("error", f"{p.label} tidak bisa dipakai, mencoba berikutnya", {"alasan": tried[-1]}, ok=False)
+        raise RuntimeError("; ".join(tried) or "tidak ada penyedia LLM")
 
-    def understand(self, text: str, kind: str = "text", media_path: str | None = None, ctx: dict | None = None) -> tuple[Understanding, str]:
+    def understand(self, text: str, kind: str = "text", media_path: str | None = None,
+                   ctx: dict | None = None) -> tuple[Understanding, str]:
         ctx = ctx or {}
-        if self.provider != "gemini":
+        if not self.providers:
             return heuristic.understand(text, kind, media_path, ctx), "heuristic"
-        from google.genai import types
-
-        raw_text = text
-        text, found = redact(text or "", ctx.get("pii_names"))
+        masked, found = redact(text or "", ctx.get("pii_names"))
         if found:
             tracing.step("policy", "Data pribadi disamarkan sebelum dikirim ke LLM",
                          {"jumlah_per_jenis": found, "catatan": "Nilai aslinya tidak ikut dikirim maupun dicatat di sini."})
-
         context = {
             "tanggal_hari_ini": str(ctx.get("today")),
             "hari": ctx.get("weekday"),
@@ -63,19 +88,16 @@ class LLMService:
             "sedang_ditagih": bool(ctx.get("in_collection")),
             "ada_order_terbuka": bool(ctx.get("has_open_order")),
         }
-        parts: list = [f"Konteks: {json.dumps(context, ensure_ascii=False)}\n<pesan>{text or ''}</pesan>"]
-        if media_path and kind in ("image", "audio"):
-            mime = mimetypes.guess_type(media_path)[0] or ("image/png" if kind == "image" else "audio/ogg")
-            parts.append(types.Part.from_bytes(data=Path(media_path).read_bytes(), mime_type=mime))
+        prompt = f"Konteks: {json.dumps(context, ensure_ascii=False)}\n<pesan>{masked}</pesan>"
         try:
-            parsed, model, ms = self._generate(UNDERSTAND_SYSTEM, parts, Understanding)
-            return parsed, model
+            parsed, label, _ = self._generate(UNDERSTAND_SYSTEM, prompt, Understanding, media_path, kind)
+            return parsed, label
         except Exception as exc:
-            tracing.step("error", "LLM tidak tersedia, memakai parser offline", {"error": str(exc)[:300]}, ok=False)
-            return heuristic.understand(raw_text, kind, media_path, ctx), "heuristic"
+            tracing.step("error", "Semua LLM tidak tersedia, memakai parser offline", {"alasan": str(exc)[:400]}, ok=False)
+            return heuristic.understand(text, kind, media_path, ctx), "heuristic"
 
     def rerank(self, raw: str, candidates: list[dict], usual_ids: set[int]) -> tuple[RerankResult, str]:
-        if self.provider != "gemini" or not candidates:
+        if not self.providers or not candidates:
             return heuristic.rerank(raw, candidates, usual_ids), "heuristic"
         listing = "\n".join(
             f"{i}. {c['name']} (skor kemiripan {c['score']:.0f}{', sering dibeli pelanggan ini' if c['product_id'] in usual_ids else ''})"
@@ -83,10 +105,10 @@ class LLMService:
         )
         prompt = f"Tulisan pelanggan: <pesan>{raw}</pesan>\nKandidat:\n{listing}"
         try:
-            parsed, model, ms = self._generate(RERANK_SYSTEM, [prompt], RerankResult)
+            parsed, label, _ = self._generate(RERANK_SYSTEM, prompt, RerankResult)
             if parsed.choice >= len(candidates):
                 parsed.choice = -1
-            return parsed, model
+            return parsed, label
         except Exception:
             return heuristic.rerank(raw, candidates, usual_ids), "heuristic"
 
