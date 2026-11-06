@@ -57,15 +57,27 @@ def find_substitutes(s: Session, product_id: int, qty_base: int, tier: str) -> l
 
 
 @tool("get_delivery_slot", "read")
-def get_delivery_slot(s: Session, area: str) -> dict:
+def get_delivery_slot(s: Session, area: str, requested: str | None = None, not_before: bool = False) -> dict:
+    """Next route day for the area. With a requested date, the first route day on or after it, plus the reason
+    when the request cannot be met exactly."""
     now = clock.now(s)
     days = ROUTES.get(area, (0, 1, 2, 3, 4, 5))
-    start = now.date() + timedelta(days=1 if now.hour < CUTOFF_HOUR else 2)
-    for i in range(14):
+    earliest = now.date() + timedelta(days=1 if now.hour < CUTOFF_HOUR else 2)
+    want = date.fromisoformat(requested) if requested else None
+    start = max(earliest, want) if want else earliest
+    for i in range(21):
         d = start + timedelta(days=i)
         if d.weekday() in days:
-            return {"date": d.isoformat(), "route_days": list(days), "cutoff_hour": CUTOFF_HOUR}
-    raise ToolError("no_slot", "Tidak ada jadwal kirim dalam 14 hari.")
+            reason = None
+            if want and d != want and not not_before:
+                if want < earliest:
+                    reason = "too_early"
+                elif want.weekday() not in days:
+                    reason = "not_route_day"
+            return {"date": d.isoformat(), "route_days": list(days), "cutoff_hour": CUTOFF_HOUR,
+                    "requested": requested, "met": want is None or d == want or (not_before and d >= want),
+                    "reason": reason, "earliest": earliest.isoformat()}
+    raise ToolError("no_slot", "Tidak ada jadwal kirim dalam 21 hari.")
 
 
 def next_order_number(s: Session) -> str:

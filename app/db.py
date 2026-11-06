@@ -14,6 +14,11 @@ def make_engine(url: str):
     kwargs = {}
     if url.startswith("sqlite"):
         kwargs["connect_args"] = {"check_same_thread": False}
+    if url == "sqlite:///:memory:":
+        # One shared connection, so tests that call the API from another thread see the same database.
+        from sqlalchemy.pool import StaticPool
+
+        kwargs["poolclass"] = StaticPool
     return create_engine(url, **kwargs)
 
 

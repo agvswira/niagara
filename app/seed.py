@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 
 from sqlalchemy.orm import Session
 
-from app import clock, db, policy
+from app import auth, clock, db, policy
 from app.models import (
     Customer, CustomerContact, Invoice, PriceList, Product, ProductAlias, ProductUom, SalesOrder,
     SalesOrderLine, Stock,
@@ -98,6 +98,7 @@ def seed(s: Session, start: datetime | None = None, rng_seed: int = 7) -> None:
     start = start or datetime.now().replace(hour=8, minute=0, second=0, microsecond=0)
     clock.set_now(s, start)
     policy.seed_policies(s)
+    auth.seed_users(s)
 
     products: list[Product] = []
     for sku, brand, name, cat, variant, base, uoms, price, stock, aliases in CATALOG:

@@ -9,6 +9,7 @@ from app.config import settings
 from app.llm import heuristic
 from app.llm.prompts import RERANK_SYSTEM, UNDERSTAND_SYSTEM
 from app.llm.schemas import RerankResult, Understanding
+from app.privacy import redact
 
 
 class LLMService:
@@ -48,11 +49,17 @@ class LLMService:
             return heuristic.understand(text, kind, media_path, ctx), "heuristic"
         from google.genai import types
 
+        raw_text = text
+        text, found = redact(text or "", ctx.get("pii_names"))
+        if found:
+            tracing.step("policy", "Data pribadi disamarkan sebelum dikirim ke LLM",
+                         {"jumlah_per_jenis": found, "catatan": "Nilai aslinya tidak ikut dikirim maupun dicatat di sini."})
+
         context = {
             "tanggal_hari_ini": str(ctx.get("today")),
             "hari": ctx.get("weekday"),
             "ada_pertanyaan_tertunda": bool(ctx.get("pending_question")),
-            "pertanyaan_tertunda": ctx.get("pending_question_text"),
+            "pertanyaan_tertunda": redact(ctx.get("pending_question_text") or "", ctx.get("pii_names"))[0] or None,
             "sedang_ditagih": bool(ctx.get("in_collection")),
             "ada_order_terbuka": bool(ctx.get("has_open_order")),
         }
@@ -65,7 +72,7 @@ class LLMService:
             return parsed, model
         except Exception as exc:
             tracing.step("error", "LLM tidak tersedia, memakai parser offline", {"error": str(exc)[:300]}, ok=False)
-            return heuristic.understand(text, kind, media_path, ctx), "heuristic"
+            return heuristic.understand(raw_text, kind, media_path, ctx), "heuristic"
 
     def rerank(self, raw: str, candidates: list[dict], usual_ids: set[int]) -> tuple[RerankResult, str]:
         if self.provider != "gemini" or not candidates:

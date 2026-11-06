@@ -1,22 +1,22 @@
 import csv
 import io
+import os
 import threading
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from sqlalchemy import func
 
-from app import clock, db, events, sim
+from app import auth, clock, db, events, sim
 from app.agents.supervisor import build_brief
 from app.config import settings
 from app.llm.client import get_llm
 from app.models import (KV, AgentRun, AgentStep, Approval, BankTransaction, Conversation, Customer, CustomerContact,
-                        Event, Invoice, Message, Policy, Product, PromiseToPay, SalesOrder, SalesOrderLine, Stock)
+                        Event, Invoice, Message, Policy, Product, PromiseToPay, SalesOrder, SalesOrderLine, Stock, User)
 from app.policy import DEFAULT_POLICIES
 from app.tools import catalog
 from app.tools.credit import UNPAID, snapshot
@@ -33,6 +33,7 @@ async def lifespan(_app: FastAPI):
         if s.query(Customer).count() == 0:
             from app.seed import seed
             seed(s)
+        auth.seed_users(s)
     events.drain()
     yield
 
@@ -40,6 +41,75 @@ async def lifespan(_app: FastAPI):
 app = FastAPI(title="Niagara", docs_url="/api/docs", lifespan=lifespan)
 app.mount("/media", StaticFiles(directory=settings.media_dir), name="media")
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
+
+PUBLIC_PATHS = {"/api/auth/login", "/api/auth/me", "/api/channels/telegram/webhook", "/api/docs", "/openapi.json"}
+
+
+@app.middleware("http")
+async def require_login(request: Request, call_next):
+    """Every API call and every customer photo needs a signed-in dashboard user."""
+    path = request.url.path
+    if (path.startswith("/api/") or path.startswith("/media/")) and path not in PUBLIC_PATHS:
+        with db.session_scope() as s:
+            user = auth.read_token(s, request.cookies.get(auth.COOKIE))
+            if user is None:
+                return JSONResponse({"detail": "Silakan masuk dulu."}, status_code=401)
+            request.state.user = {"username": user.username, "name": user.display_name, "role": user.role}
+    return await call_next(request)
+
+
+def user_of(request: Request) -> dict:
+    return request.state.user
+
+
+def require_role(request: Request, *roles: str) -> dict:
+    user = user_of(request)
+    if user["role"] not in roles:
+        raise HTTPException(403, f"Hanya {', '.join(auth.ROLES[r] for r in roles)} yang boleh melakukan ini.")
+    return user
+
+
+class Login(BaseModel):
+    username: str
+    password: str
+
+
+@app.post("/api/auth/login")
+def login(body: Login, request: Request) -> JSONResponse:
+    name = body.username.strip().lower()
+    if auth.locked(name):
+        raise HTTPException(429, "Terlalu banyak percobaan gagal. Coba lagi 5 menit lagi.")
+    with db.session_scope() as s:
+        user = s.query(User).filter_by(username=name).first()
+        if user is None or not auth.verify_password(body.password, user.password_hash):
+            auth.record_failure(name)
+            raise HTTPException(401, "Nama pengguna atau kata sandi salah.")
+        auth.clear_failures(name)
+        token = auth.make_token(s, user.username)
+        data = {"username": user.username, "name": user.display_name, "role": user.role}
+    resp = JSONResponse(data)
+    secure = request.headers.get("x-forwarded-proto", request.url.scheme) == "https"
+    resp.set_cookie(auth.COOKIE, token, httponly=True, samesite="lax", secure=secure, max_age=auth.SESSION_SECONDS)
+    return resp
+
+
+@app.post("/api/auth/logout")
+def logout() -> JSONResponse:
+    resp = JSONResponse({"ok": True})
+    resp.delete_cookie(auth.COOKIE)
+    return resp
+
+
+@app.get("/api/auth/me")
+def me(request: Request) -> dict:
+    """Always 200 so the login page can check the session without a console error; user is null when signed out."""
+    with db.session_scope() as s:
+        user = auth.read_token(s, request.cookies.get(auth.COOKIE))
+        if user is None:
+            return {"user": None}
+        u = {"username": user.username, "name": user.display_name, "role": user.role}
+    return {"user": True, **u, "role_label": auth.ROLES[u["role"]],
+            "can_decide": sorted(auth.APPROVALS_BY_ROLE.get(u["role"], set())) if u["role"] != "supervisor" else ["*"]}
 
 
 def drain_bg() -> None:
@@ -246,10 +316,13 @@ def run_detail(rid: int) -> dict:
 # ---------- approvals ----------
 
 @app.get("/api/approvals")
-def approvals(status: str = "PENDING") -> list[dict]:
+def approvals(request: Request, status: str = "PENDING") -> list[dict]:
+    role = user_of(request)["role"]
     with db.session_scope() as s:
         out = []
-        for a in s.query(Approval).filter_by(status=status).order_by(Approval.id.desc()).limit(100):
+        for a in s.query(Approval).filter_by(status=status).order_by(Approval.id.desc()).limit(200):
+            if not auth.can_decide(role, a.kind):
+                continue
             d = {"id": a.id, "kind": a.kind, "entity_type": a.entity_type, "entity_id": a.entity_id, "reason": a.reason,
                  "payload": a.payload, "status": a.status, "created_at": a.created_at.isoformat(), "decided_by": a.decided_by}
             if a.entity_type == "sales_order":
@@ -285,13 +358,16 @@ class Decision(BaseModel):
 
 
 @app.post("/api/approvals/{aid}/decide")
-def decide(aid: int, body: Decision) -> dict:
+def decide(aid: int, body: Decision, request: Request) -> dict:
+    user = user_of(request)
     if body.decision not in ("approve", "reject"):
         raise HTTPException(422, "Keputusan harus approve atau reject")
     with db.session_scope() as s:
         a = s.get(Approval, aid)
         if not a or a.status != "PENDING":
             raise HTTPException(409, "Approval sudah diputuskan atau tidak ada")
+        if not auth.can_decide(user["role"], a.kind):
+            raise HTTPException(403, f"{auth.ROLES[user['role']]} tidak berwenang memutuskan ini.")
         if a.kind == "unmatched_payment" and body.decision == "approve" and not body.customer_id:
             raise HTTPException(422, "Pilih pelanggan pemilik transfer ini")
         if body.edits and a.entity_type == "sales_order":
@@ -314,13 +390,13 @@ def decide(aid: int, body: Decision) -> dict:
                     uom, factor, _ = catalog.resolve_uom(s, ln.product_id, ln.uom or None, basket)
                     ln.uom, ln.qty_base = uom, int(round(ln.qty * factor))
                 ln.confidence = 1.0
-                audit(s, body.by, "edit_line", "sales_order_line", ln.id, before=before,
+                audit(s, user["username"], "edit_line", "sales_order_line", ln.id, before=before,
                       after={"product_id": ln.product_id, "qty": ln.qty})
             order.was_edited = True
         if a.kind == "unmatched_payment" and body.customer_id:
             a.payload = {**(a.payload or {}), "customer_id": body.customer_id}
         a.status = "APPROVED" if body.decision == "approve" else "REJECTED"
-        a.decided_by, a.decided_at = body.by, clock.now(s)
+        a.decided_by, a.decided_at = user["username"], clock.now(s)
         events.emit(s, "approval.decided", "approval", a.id, {})
     drain_bg()
     return {"ok": True}
@@ -436,7 +512,8 @@ class PolicyValue(BaseModel):
 
 
 @app.put("/api/policies/{key}")
-def set_policy(key: str, body: PolicyValue) -> dict:
+def set_policy(key: str, body: PolicyValue, request: Request) -> dict:
+    user = require_role(request, "supervisor")
     if key not in DEFAULT_POLICIES:
         raise HTTPException(404, "Aturan tidak dikenal")
     default = DEFAULT_POLICIES[key][0]
@@ -446,7 +523,7 @@ def set_policy(key: str, body: PolicyValue) -> dict:
         p = s.query(Policy).filter_by(key=key).first()
         before = p.value
         p.value = body.value
-        audit(s, body.by, "set_policy", "policy", p.id, before=before, after=body.value)
+        audit(s, user["username"], "set_policy", "policy", p.id, before=before, after=body.value)
     return {"ok": True}
 
 
@@ -455,12 +532,13 @@ class Autonomy(BaseModel):
 
 
 @app.put("/api/customers/{cid}/autonomy")
-def set_autonomy(cid: int, body: Autonomy) -> dict:
+def set_autonomy(cid: int, body: Autonomy, request: Request) -> dict:
+    user = require_role(request, "supervisor")
     if body.level not in (0, 1, 2):
         raise HTTPException(422, "Level 0, 1, atau 2")
     with db.session_scope() as s:
         c = s.get(Customer, cid)
-        audit(s, "supervisor", "set_autonomy", "customer", cid, before=c.autonomy_level, after=body.level)
+        audit(s, user["username"], "set_autonomy", "customer", cid, before=c.autonomy_level, after=body.level)
         c.autonomy_level = body.level
     return {"ok": True}
 
@@ -480,7 +558,8 @@ def advance(body: Advance) -> dict:
 
 
 @app.post("/api/sim/reset")
-def reset() -> dict:
+def reset(request: Request) -> dict:
+    require_role(request, "supervisor")
     from app.seed import reset_and_seed
 
     with events._lock:
@@ -493,6 +572,9 @@ def reset() -> dict:
 @app.post("/api/channels/telegram/webhook")
 async def telegram_webhook(request: Request) -> dict:
     """Links a Telegram chat to a customer with '/start <id>', then treats its messages like WhatsApp."""
+    expected = os.getenv("TELEGRAM_WEBHOOK_SECRET")
+    if expected and request.headers.get("X-Telegram-Bot-Api-Secret-Token") != expected:
+        raise HTTPException(403, "Webhook tidak dikenal")
     update = await request.json()
     msg = update.get("message") or {}
     chat_id = str((msg.get("chat") or {}).get("id", ""))

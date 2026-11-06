@@ -125,6 +125,105 @@ def test_time_machine_delivers_and_invoices():
         assert s.query(Invoice).filter_by(order_id=o.id).count() == 1
 
 
+def test_customer_changes_quantity_and_removes_item():
+    say(1, "indomie goreng 2 dus, aqua tgg 3 dus, rinso 2 dus")
+    assert last_order(1).status == "CONFIRMED"
+    say(1, "kurangi rinso jadi 1 dus")
+    o = last_order(1)
+    assert o.status == "CONFIRMED"
+    rinso = next(ln for ln in o.lines if ln.product_id == 29)
+    assert rinso.qty == 1
+    assert "perbarui" in replies(1)[-1]
+    say(1, "gak jadi aqua")
+    o = last_order(1)
+    assert 7 not in {ln.product_id for ln in o.lines}
+    assert o.total == sum(ln.price * ln.qty_base for ln in o.lines)
+
+
+def test_customer_cancels_order_and_stock_is_released():
+    from app.models import Stock
+
+    say(1, "indomie goreng 2 dus")
+    with db.session_scope() as s:
+        reserved_before = s.query(Stock).filter_by(product_id=1).one().qty_reserved
+    say(1, "batal ya mas")
+    assert last_order(1).status == "CANCELLED"
+    with db.session_scope() as s:
+        assert s.query(Stock).filter_by(product_id=1).one().qty_reserved == reserved_before - 80
+    assert "batalkan" in replies(1)[-1]
+
+
+def test_change_after_delivery_goes_to_admin():
+    say(1, "indomie goreng 2 dus")
+    with db.session_scope() as s:
+        sim.advance_days(s, 3)
+    events.drain()
+    say(1, "kurangi indomie goreng jadi 1 dus")
+    assert "sudah dikirim" in replies(1)[-1]
+    with db.session_scope() as s:
+        assert s.query(Approval).filter_by(kind="handoff").count() == 1
+
+
+def test_unknown_item_reaches_admin_queue():
+    say(1, "obat nyamuk bakar 3 dus")
+    with db.session_scope() as s:
+        a = s.query(Approval).filter_by(kind="unknown_item").one()
+        assert "obat nyamuk bakar" in a.reason
+    assert "belum ada di katalog" in replies(1)[-1]
+
+
+def test_similar_but_unlisted_item_can_be_declined():
+    say(1, "indomie goreng 2 dus, sabun colek ekonomi 3 dus")
+    assert last_order(1).status == "NEEDS_CLARIFICATION"
+    assert "Bukan salah satunya" in replies(1)[-1]
+    with db.session_scope() as s:
+        o = s.query(SalesOrder).filter_by(customer_id=1, is_history=False).order_by(SalesOrder.id.desc()).first()
+        n_options = len(o.pending_question["questions"][0]["options"])
+    say(1, str(n_options + 1))
+    o = last_order(1)
+    assert o.status == "CONFIRMED"
+    with db.session_scope() as s:
+        assert s.query(Approval).filter_by(kind="unknown_item", entity_id=o.id).count() == 1
+
+
+def test_one_message_with_proof_and_new_order():
+    with db.session_scope() as s:
+        amount = snapshot(s, 6)["outstanding"]
+        path = sim.render_transfer("BCA", amount, "2026-11-09", "AMINAH BAROKAH", "REF1", "CV")
+        sim.inbound(s, 6, "sudah transfer ya, sekalian order indomie goreng 2 dus", kind="image", media_path=path)
+    events.drain()
+    with db.session_scope() as s:
+        from app.models import PaymentProof
+        assert s.query(PaymentProof).filter_by(customer_id=6).count() == 1
+    assert last_order(6) is not None
+    texts = replies(6)
+    assert any("bukti transfer" in t for t in texts)
+
+
+def test_follow_up_message_does_not_ask_for_proof_again_and_status_skips_new_order():
+    say(1, "indomie goreng 2 dus")
+    first = last_order(1).number
+    with db.session_scope() as s:
+        sim.customer_pays(s, 1, 500_000)
+    events.drain()
+    say(1, "sudah tf ya, sekalian order aqua tgg 2 dus. pesanan kemarin kapan dikirim?")
+    texts = replies(1)
+    assert not any("boleh kirim foto bukti" in t for t in texts)
+    assert any("sudah kami terima dan sedang dicocokkan" in t for t in texts)
+    assert any(first in t and "dikonfirmasi" in t for t in texts)
+
+
+def test_requested_delivery_day_is_honoured_or_explained():
+    say(1, "indomie goreng 2 dus, kirim jumat ya")
+    o = last_order(1)
+    assert o.delivery_date == date(2026, 11, 13)
+    assert "sesuai permintaan" in replies(1)[-1]
+    say(10, "indomie goreng 2 dus, kirim rabu ya")
+    o = last_order(10)
+    assert o.delivery_date.weekday() in (1, 3, 5)
+    assert "bukan jadwal rute" in replies(10)[-1]
+
+
 @pytest.mark.parametrize("text,expected", [
     ("indomie goreng 2 dus, aqua tgg 3 dus", [("indomie goreng", 2, "dus"), ("aqua tgg", 3, "dus")]),
     ("bimoli 2 liter 5, sunlight x3", [("bimoli 2 liter", 5, None), ("sunlight", 3, None)]),

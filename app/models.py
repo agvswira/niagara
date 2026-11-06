@@ -91,6 +91,8 @@ class SalesOrder(Base):
     delivery_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     pending_question: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
     hold_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    requested_delivery: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
+    requested_not_before: Mapped[bool] = mapped_column(Boolean, default=False)
     requested_discount_pct: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     was_edited: Mapped[bool] = mapped_column(Boolean, default=False)
     auto_processed: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -280,6 +282,15 @@ class AuditLog(Base):
     before: Mapped[Optional[Any]] = mapped_column(JSON, nullable=True)
     after: Mapped[Optional[Any]] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime)
+
+
+class User(Base):
+    __tablename__ = "users"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    username: Mapped[str] = mapped_column(String(40), unique=True)
+    display_name: Mapped[str] = mapped_column(String(80))
+    role: Mapped[str] = mapped_column(String(20))  # admin_order / staf_ar / supervisor
+    password_hash: Mapped[str] = mapped_column(String(200))
 
 
 class KV(Base):

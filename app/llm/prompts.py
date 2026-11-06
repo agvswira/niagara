@@ -12,6 +12,12 @@ Aturan:
 - Gambar bisa berupa nota tulisan tangan (ekstrak barangnya) atau bukti transfer (isi payment_proof, intent bukti_bayar).
 - Pesan suara: dengarkan lalu ekstrak seperti teks. Bahasa campur Jawa/Indonesia/singkatan itu wajar.
 - Janji bayar ("kamis depan separo dulu") isi promise dengan days_from_today relatif terhadap tanggal hari ini.
+- Satu pesan bisa punya beberapa niat. Isi intent dengan niat utama dan also_intents dengan niat lain,
+  misal foto bukti transfer dengan caption "sekalian order indomie 2 dus": intent bukti_bayar, also_intents [order_baru].
+- Bila ada pesanan terbuka dan pelanggan mengubahnya, isi changes, bukan lines: "kurangi rinso jadi 1" = ubah_jumlah,
+  "tambah aqua 2 dus" = tambah, "aqua kurangi 1 dus" = kurangi, "gak jadi aqua" = hapus, "batal ya" = batal_semua.
+  Intent ubah_order. Bila tidak ada pesanan terbuka, "tambah X" adalah order baru.
+- Permintaan waktu kirim ("kirim kamis", "jangan dikirim sebelum tgl 12") isi requested_delivery, bukan promise.
 """
 
 RERANK_SYSTEM = """Kamu memilih produk katalog yang paling cocok dengan tulisan pelanggan distributor.

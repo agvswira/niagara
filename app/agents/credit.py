@@ -19,6 +19,7 @@ class CreditState(TypedDict, total=False):
     snapshot: dict
     decision: dict
     discount: dict
+    updated: bool
 
 
 def _s(config) -> Session:
@@ -29,7 +30,8 @@ def unknown_item_notes(order: SalesOrder) -> list[str]:
     return [f"\"{ln.raw_text}\" belum ada di katalog kami, admin akan menghubungi." for ln in order.lines if not ln.product_id]
 
 
-def confirm_order(s: Session, order: SalesOrder, notes: list[str], actor: str, send: bool = True) -> bool:
+def confirm_order(s: Session, order: SalesOrder, notes: list[str], actor: str, send: bool = True,
+                  updated: bool = False) -> bool:
     res = reserve_stock(s, order_id=order.id)
     if not res.ok:
         tracing.step("error", "Stok berubah saat reservasi, kembali ke Fulfillment", {"error": res.message}, ok=False)
@@ -40,7 +42,7 @@ def confirm_order(s: Session, order: SalesOrder, notes: list[str], actor: str, s
     touch(s, order)
     if send:
         customer = s.get(Customer, order.customer_id)
-        reply(s, customer, templates.order_confirmation(customer.owner_name, order, notes))
+        reply(s, customer, templates.order_confirmation(customer.owner_name, order, notes, updated=updated))
     events.emit(s, "order.confirmed", "sales_order", order.id, {})
     return True
 
@@ -80,7 +82,7 @@ def allow(state: CreditState, config) -> CreditState:
         notes.append("Untuk diskon, harga mengikuti daftar harga toko. Permintaannya sudah kami teruskan ke supervisor.")
         request_approval(s, "discount_note", "sales_order", order.id, " ".join(state["discount"]["reasons"]),
                          {"requested_pct": order.requested_discount_pct})
-    if confirm_order(s, order, notes, "credit_agent"):
+    if confirm_order(s, order, notes, "credit_agent", updated=bool(state.get("updated"))):
         tracing.summarize(f"{order.number} dikonfirmasi otomatis, total {rupiah(order.total)}")
     return {}
 
@@ -134,7 +136,8 @@ def on_stock_checked(s: Session, ev) -> None:
     order = s.get(SalesOrder, ev.entity_id)
     with tracing.agent_run(s, "credit", event_id=ev.id, entity_type="sales_order", entity_id=order.id,
                            customer_id=order.customer_id):
-        GRAPH.invoke({"order_id": order.id, "notes": ev.payload.get("notes", [])}, config={"configurable": {"session": s}})
+        GRAPH.invoke({"order_id": order.id, "notes": ev.payload.get("notes", []), "updated": bool(ev.payload.get("updated"))},
+                     config={"configurable": {"session": s}})
 
 
 def release_held_orders(s: Session, customer_id: int) -> list[SalesOrder]:

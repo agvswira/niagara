@@ -4,7 +4,8 @@ import json
 import re
 from datetime import date
 
-from app.llm.schemas import OrderLine, PaymentProof, Promise, Replacement, RerankResult, Understanding
+from app.llm.schemas import (DeliveryRequest, OrderChange, OrderLine, PaymentProof, Promise, Replacement, RerankResult,
+                             Understanding)
 
 UNIT_MAP = {
     "dus": "dus", "dos": "dus", "doz": "dus", "karton": "dus", "krt": "dus", "ktn": "dus", "ctn": "dus", "box": "dus",
@@ -108,33 +109,23 @@ def _parse_chunk(chunk: str) -> OrderLine | None:
                      note=None if qty is not None else "jumlah tidak disebut")
 
 
-def parse_order_lines(text: str) -> tuple[list[OrderLine], list[Replacement], list[str], bool]:
-    t = _normalize(text)
-    uses_usual = bool(USUAL_RE.search(t))
-    t = USUAL_RE.sub(" ", t)
-    replacements = [Replacement(from_item=_strip_filler(a), to_item=_strip_filler(b)) for a, b in REPLACE_RE.findall(t)]
-    t = REPLACE_RE.sub(" , ", t)
-    removals = [_strip_filler(r) for r in REMOVE_RE.findall(t)]
-    t = REMOVE_RE.sub(" , ", t)
-    t = DISCOUNT_RE.sub(" ", t)
-    t = re.sub(r"(abaikan|ignore|lupakan|override)[^:,.\n]*[:,.\n]?", " , ", t)
-    chunks = re.split(r"\n|,|;|\+|&|\btapi\b|\bdan\b|\bsama\b|\bterus\b|\bkalih\b|\bambek\b|\bkaro\b|\blan\b|\bplus\b|\./", t)
-    lines = []
-    for ch in chunks:
-        orphan = _orphan_qty(ch)
-        if orphan and replacements and replacements[-1].qty is None:
-            replacements[-1].qty, replacements[-1].unit = orphan
-            continue
-        ln = _parse_chunk(ch)
-        if ln:
-            lines.append(ln)
-    return lines, replacements, removals, uses_usual
+CANCEL_WORDS = r"(?:batal(?:kan|in)?|cancel|gak jadi|ga jadi|nggak jadi|ndak jadi|tidak jadi|hapus|coret)"
+CANCEL_ALL_RE = re.compile(rf"^\s*{CANCEL_WORDS}(?:\s+(?:semua|aja|saja|dulu|ya|mas|pak|bu|deh|pesanan(?:nya)?|order(?:an|nya)?|yang tadi|yg tadi|pesan))*\s*[.!]*\s*$")
+REMOVE_ITEM_RE = re.compile(rf"^\s*{CANCEL_WORDS}\s+(?P<item>[a-z][a-z0-9 ]+?)\s*$")
+SET_QTY_RE = re.compile(r"^\s*(?:(?:kurangi|kurangin|ubah|ralat|ganti)\s+)?(?P<item>[a-z][a-z0-9 ]*?)\s+(?:jadi|menjadi)\s+(?P<qty>\d+(?:[.,]\d+)?)\s*(?P<unit>[a-z]+)?\s*$")
+DELTA_RE = re.compile(r"^\s*(?P<op>kurangi|kurangin|tambah|tambahin|tambahkan)\s+(?P<rest>.+)$")
+DELIVERY_RE = re.compile(
+    r"(?P<neg>jangan|jgn)?\s*(?:di)?(?:kirim|antar)(?:nya|in|kan)?\s+(?P<before>sebelum\s+)?(?:hari\s+|pas\s+)?"
+    r"(?P<when>besok|lusa|senin|selasa|rabu|kamis|jumat|jum'at|sabtu|minggu|(?:tgl|tanggal)\s*\d{1,2})(?P<next>\s+depan)?")
+DELIVERY_AFTER_RE = re.compile(
+    r"(?P<before>)(?P<when>besok|lusa|senin|selasa|rabu|kamis|jumat|jum'at|sabtu|(?:tgl|tanggal)\s*\d{1,2})(?P<next>\s+depan)?"
+    r"\s+(?:tolong\s+)?(?:di)?(?:kirim|antar)(?:nya|in|kan)?\b")
+NON_ITEM_RE = re.compile(r"\b(tf|transfer|trf|bayar|lunas|bukti|tagihan|separo|setengah|kapan|status|rusak|pecah|komplain"
+                         r"|besok|lusa|senin|selasa|rabu|kamis|jumat|sabtu|minggu depan|akhir bulan)\b")
 
 
-def parse_promise(text: str, today: date) -> Promise | None:
-    t = _normalize(text)
-    days = None
-    phrase = None
+def _date_phrase(t: str, today: date) -> tuple[int | None, str | None]:
+    days = phrase = None
     if "lusa" in t:
         days, phrase = 2, "lusa"
     elif "besok" in t:
@@ -146,9 +137,7 @@ def parse_promise(text: str, today: date) -> Promise | None:
         d = int(m.group(1))
         target = today.replace(day=min(d, 28))
         if target < today:
-            month = today.month % 12 + 1
-            year = today.year + (1 if today.month == 12 else 0)
-            target = date(year, month, min(d, 28))
+            target = date(today.year + (today.month == 12), today.month % 12 + 1, min(d, 28))
         days, phrase = (target - today).days, m.group(0)
     for name, wd in WEEKDAYS.items():
         if re.search(rf"\b{name}\b", t) and not (name == "minggu" and re.search(r"minggu (depan|ini|lalu)", t)):
@@ -163,6 +152,82 @@ def parse_promise(text: str, today: date) -> Promise | None:
     if days is None and "akhir bulan" in t:
         nxt = date(today.year + (today.month == 12), today.month % 12 + 1, 1)
         days, phrase = (nxt - today).days - 1, "akhir bulan"
+    return days, phrase
+
+
+def parse_delivery(t: str, today: date) -> tuple[DeliveryRequest | None, str]:
+    """Returns the requested delivery day and the text with that phrase removed."""
+    m = DELIVERY_RE.search(t) or DELIVERY_AFTER_RE.search(t)
+    if not m:
+        return None, t
+    days, phrase = _date_phrase(m.group(0), today)
+    if days is None:
+        return None, t
+    req = DeliveryRequest(date_text=m.group(0).strip(), days_from_today=days, not_before=bool(m.group("before")))
+    return req, t[: m.start()] + " , " + t[m.end():]
+
+
+def parse_message(text: str, today: date | None = None) -> dict:
+    today = today or date.today()
+    t = _normalize(text)
+    delivery, t = parse_delivery(t, today)
+    uses_usual = bool(USUAL_RE.search(t))
+    t = USUAL_RE.sub(" ", t)
+    replacements = [Replacement(from_item=_strip_filler(a), to_item=_strip_filler(b)) for a, b in REPLACE_RE.findall(t)]
+    t = REPLACE_RE.sub(" , ", t)
+    removals = [_strip_filler(r) for r in REMOVE_RE.findall(t)]
+    t = REMOVE_RE.sub(" , ", t)
+    t = DISCOUNT_RE.sub(" ", t)
+    t = re.sub(r"(abaikan|ignore|lupakan|override)[^:,.\n]*[:,.\n]?", " , ", t)
+    chunks = re.split(r"\n|,|;|\+|&|[.?!](?=\s|$)|\btapi\b|\bdan\b|\bsama\b|\bterus\b|\bkalih\b|\bambek\b|\bkaro\b|\blan\b|\bplus\b", t)
+    lines: list[OrderLine] = []
+    changes: list[OrderChange] = []
+    for ch in chunks:
+        bare = _strip_filler(ch)
+        if not bare:
+            continue
+        if CANCEL_ALL_RE.match(bare):
+            changes.append(OrderChange(op="batal_semua"))
+            continue
+        m = REMOVE_ITEM_RE.match(bare)
+        if m:
+            changes.append(OrderChange(op="hapus", item=_strip_filler(m.group("item"))))
+            continue
+        m = SET_QTY_RE.match(bare)
+        if m:
+            changes.append(OrderChange(op="ubah_jumlah", item=_strip_filler(m.group("item")),
+                                       qty=float(m.group("qty").replace(",", ".")), unit=UNIT_MAP.get(m.group("unit") or "")))
+            continue
+        m = DELTA_RE.match(bare)
+        if m:
+            ln = _parse_chunk(m.group("rest"))
+            if ln:
+                op = "tambah" if m.group("op").startswith("tambah") else "kurangi"
+                changes.append(OrderChange(op=op, item=ln.raw, qty=ln.qty, unit=ln.unit))
+                continue
+        orphan = _orphan_qty(ch)
+        if orphan and replacements and replacements[-1].qty is None:
+            replacements[-1].qty, replacements[-1].unit = orphan
+            continue
+        ln = _parse_chunk(ch)
+        if ln is None:
+            continue
+        # Payment, status, or complaint sentences are not products unless they carry a quantity.
+        if ln.note and NON_ITEM_RE.search(ch):
+            continue
+        lines.append(ln)
+    return {"lines": lines, "replacements": replacements, "removals": removals, "uses_usual": uses_usual,
+            "changes": changes, "delivery": delivery, "text": t}
+
+
+def parse_order_lines(text: str) -> tuple[list[OrderLine], list[Replacement], list[str], bool]:
+    p = parse_message(text)
+    return p["lines"], p["replacements"], p["removals"], p["uses_usual"]
+
+
+def parse_promise(text: str, today: date) -> Promise | None:
+    t = _normalize(text)
+    days, phrase = _date_phrase(t, today)
     if days is None:
         return None
     pct = None
@@ -202,51 +267,70 @@ def read_png_meta(path: str | None) -> dict | None:
         return None
 
 
+PRIORITY = ["bukti_bayar", "jawab_pertanyaan", "ubah_order", "order_baru", "klaim_bayar", "janji_bayar",
+            "tanya_status", "komplain", "lainnya"]
+
+
 def understand(text: str, kind: str = "text", media_path: str | None = None, ctx: dict | None = None) -> Understanding:
     ctx = ctx or {}
     today = ctx.get("today") or date.today()
     meta = read_png_meta(media_path) if kind == "image" else None
+    proof = None
     if meta and meta.get("type") == "transfer":
-        return Understanding(intent="bukti_bayar", payment_proof=PaymentProof(
-            bank=meta.get("bank"), amount=meta.get("amount"), date=meta.get("date"),
-            sender_name=meta.get("sender_name"), ref=meta.get("ref")))
-    if meta and meta.get("type") == "nota":
+        proof = PaymentProof(bank=meta.get("bank"), amount=meta.get("amount"), date=meta.get("date"),
+                             sender_name=meta.get("sender_name"), ref=meta.get("ref"))
+    elif meta and meta.get("type") == "nota":
         text = (text or "") + "\n" + meta.get("text", "")
-    if kind == "image" and not meta:
+    elif kind == "image":
         return Understanding(intent="lainnya", language_note="Gambar tidak bisa dibaca di mode offline.")
     if kind == "audio":
         return Understanding(intent="lainnya", language_note="Pesan suara butuh mode LLM.")
 
-    t = _normalize(text)
+    t = _normalize(text or "")
     suspicious = bool(SUSPICIOUS_RE.search(t))
     disc = DISCOUNT_RE.search(t)
-    discount = float(disc.group(1).replace(",", ".")) if disc else None
-    lines, repl, removals, usual = parse_order_lines(text)
-    base = dict(requested_discount_pct=discount, suspicious_instruction=suspicious)
+    base = dict(requested_discount_pct=float(disc.group(1).replace(",", ".")) if disc else None,
+                suspicious_instruction=suspicious)
+    p = parse_message(text or "", today)
+    lines, changes = p["lines"], p["changes"]
+    explicit = [ln for ln in lines if ln.note is None]
 
-    if ctx.get("pending_question"):
+    if ctx.get("pending_question") and not proof and not explicit and not changes:
         nums = [int(n) for n in re.findall(r"(?<![\d.])(\d{1,3})(?![\d.])", t)]
         agrees = True if YES_RE.search(t) else False if NO_RE.search(t) else None
-        short = len(t.split()) <= 8
-        if (nums and short) or agrees is not None:
-            return Understanding(intent="jawab_pertanyaan", choices=nums if short else [], agrees=agrees, **base)
+        if (nums and len(t.split()) <= 8) or agrees is not None:
+            return Understanding(intent="jawab_pertanyaan", choices=nums, agrees=agrees, **base)
 
-    explicit = [ln for ln in lines if ln.note is None]
-    promise = parse_promise(t, today)
-    if promise and (PAY_WORD_RE.search(t) or ctx.get("in_collection")) and not explicit and not usual:
-        return Understanding(intent="janji_bayar", promise=promise, **base)
-    if PAY_CLAIM_RE.search(t) and not explicit:
-        return Understanding(intent="klaim_bayar", **base)
+    # A "tambah" with no open order is simply a new order.
+    if changes and not ctx.get("has_open_order"):
+        lines = lines + [OrderLine(raw=c.item, qty=c.qty or 1, unit=c.unit) for c in changes if c.op == "tambah" and c.item]
+        changes = [c for c in changes if c.op != "tambah"]
+
+    intents: list[str] = []
+    if proof:
+        intents.append("bukti_bayar")
+    if changes:
+        intents.append("ubah_order")
+    if lines or p["uses_usual"] or p["replacements"]:
+        intents.append("order_baru")
+    if PAY_CLAIM_RE.search(t) and not proof:
+        intents.append("klaim_bayar")
+    promise = parse_promise(p["text"], today)
+    if promise and (PAY_WORD_RE.search(t) or (ctx.get("in_collection") and not explicit and not p["uses_usual"])):
+        intents.append("janji_bayar")
+    else:
+        promise = None
+    if STATUS_RE.search(t):
+        intents.append("tanya_status")
     if COMPLAINT_RE.search(t):
-        return Understanding(intent="komplain", **base)
-    if STATUS_RE.search(t) and not explicit:
-        return Understanding(intent="tanya_status", **base)
-    if CHANGE_RE.search(t) and ctx.get("has_open_order"):
-        return Understanding(intent="ubah_order", lines=lines, removals=removals, **base)
-    if lines or usual or repl:
-        return Understanding(intent="order_baru", lines=lines, uses_usual_order=usual, replacements=repl,
-                             removals=removals, **base)
-    return Understanding(intent="lainnya", **base)
+        intents.append("komplain")
+    if not intents:
+        intents.append("lainnya")
+    intents.sort(key=PRIORITY.index)
+    return Understanding(intent=intents[0], also_intents=intents[1:], lines=lines, changes=changes,
+                         requested_delivery=p["delivery"], uses_usual_order=p["uses_usual"],
+                         replacements=p["replacements"], removals=p["removals"], promise=promise,
+                         payment_proof=proof, **base)
 
 
 def rerank(raw: str, candidates: list[dict], usual_ids: set[int]) -> RerankResult:

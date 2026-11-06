@@ -26,7 +26,10 @@ def order_confirmation(owner: str, order, notes: list[str], updated: bool = Fals
         rows.append(f"• {qty_text(ln.qty, ln.uom)} {ln.product.name}  {rupiah(ln.subtotal)}")
     parts = [head, "\n".join(rows), f"Total {rupiah(order.total)}"]
     if order.delivery_date:
-        parts.append(f"Dikirim {tanggal(order.delivery_date)}.")
+        asked = order.requested_delivery is not None and (
+            order.delivery_date == order.requested_delivery
+            or (order.requested_not_before and order.delivery_date >= order.requested_delivery))
+        parts.append(f"Dikirim {tanggal(order.delivery_date)}{', sesuai permintaan' if asked else ''}.")
     parts.extend(notes)
     return "\n\n".join(p for p in parts if p)
 
@@ -48,6 +51,7 @@ def clarification(owner: str, questions: list[dict]) -> str:
 def _question_body(q: dict) -> str:
     if q["type"] == "choose_product":
         opts = "\n".join(f"   {i + 1}) {o['name']}" for i, o in enumerate(q["options"]))
+        opts += f"\n   {len(q['options']) + 1}) Bukan salah satunya"
         return f"\"{q['raw']}\" maksudnya yang mana?\n{opts}"
     return f"\"{q['raw']}\" mau berapa {q.get('uom', 'dus')}?"
 
@@ -124,6 +128,11 @@ def still_held(orders, outstanding: int, limit: int) -> str:
             f" {rupiah(limit)}. Begitu sisa tagihan turun di bawah batas, pesanan langsung kami jadwalkan.")
 
 
+def proof_already_received(owner: str, amount: int) -> str:
+    return (f"{owner}, bukti transfer {rupiah(amount)} sudah kami terima dan sedang dicocokkan dengan mutasi bank."
+            f" Nanti kami kabari begitu masuk.")
+
+
 def ask_for_proof(owner: str) -> str:
     return f"Terima kasih {owner}. Supaya cepat kami cocokkan, boleh kirim foto bukti transfernya di sini?"
 
@@ -148,6 +157,21 @@ def no_open_order(owner: str) -> str:
 
 def complaint_ack(owner: str) -> str:
     return f"Maaf atas kendalanya, {owner}. Keluhan ini sudah kami teruskan ke admin, nanti dihubungi langsung."
+
+
+def unknown_items(owner: str, items: list[str]) -> str:
+    names = ", ".join(f"\"{i}\"" for i in items)
+    return (f"{owner}, {names} belum ada di katalog kami. Admin kami cek dulu dan akan menghubungi."
+            f" Kalau ada merek atau ukurannya, boleh ditulis di sini.")
+
+
+def order_cancelled(owner: str, order) -> str:
+    return f"Baik {owner}, pesanan {order.number} sudah kami batalkan."
+
+
+def already_shipped(owner: str, order) -> str:
+    return (f"{owner}, pesanan {order.number} sudah dikirim jadi tidak bisa diubah lagi dari sini."
+            f" Admin kami akan menghubungi untuk retur atau tambahan pesanan.")
 
 
 def handoff(owner: str) -> str:

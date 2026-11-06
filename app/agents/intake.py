@@ -26,6 +26,8 @@ class IntakeState(TypedDict, total=False):
     source: str
     drafts: list[dict]
     outcome: str
+    tasks: list[str]
+    current: str | None
 
 
 def _session(config) -> Session:
@@ -50,6 +52,7 @@ def load_context(state: IntakeState, config) -> IntakeState:
         "pending_question_text": waiting.pending_question.get("text") if waiting and waiting.pending_question else None,
         "in_collection": bool(overdue or recent_reminder),
         "has_open_order": bool(latest_open_order(s, customer.id)),
+        "pii_names": [customer.name, customer.bank_account_name, customer.owner_name.split(" ", 1)[-1]],
     }
     tracing.link("message", msg.id, customer.id)
     tracing.step("think", f"Pesan dari {customer.name}", {
@@ -72,11 +75,39 @@ def understand(state: IntakeState, config) -> IntakeState:
     return {"u": u, "source": source}
 
 
+TASK_NODE = {"bukti_bayar": "payment_proof", "jawab_pertanyaan": "resolve_answer", "ubah_order": "change_order",
+             "order_baru": "build_lines", "janji_bayar": "promise", "klaim_bayar": "simple_reply",
+             "tanya_status": "simple_reply", "komplain": "simple_reply", "lainnya": "simple_reply"}
+TASK_LABEL = {"bukti_bayar": "catat bukti transfer", "jawab_pertanyaan": "proses jawaban pelanggan",
+              "ubah_order": "ubah pesanan yang ada", "order_baru": "susun order baru", "janji_bayar": "catat janji bayar",
+              "klaim_bayar": "minta foto bukti transfer", "tanya_status": "jawab status pesanan",
+              "komplain": "teruskan keluhan ke admin", "lainnya": "teruskan ke admin"}
+
+
+def plan(state: IntakeState, config) -> IntakeState:
+    """One message can carry several requests; turn them into an ordered task list."""
+    u = state["u"]
+    tasks: list[str] = []
+    for intent in [u.intent, *u.also_intents]:
+        if intent not in tasks:
+            tasks.append(intent)
+    if len(tasks) > 1 and "lainnya" in tasks:
+        tasks.remove("lainnya")
+    if "bukti_bayar" in tasks and "klaim_bayar" in tasks:
+        tasks.remove("klaim_bayar")
+    if len(tasks) > 1:
+        tracing.step("think", f"Pesan berisi {len(tasks)} permintaan, dikerjakan berurutan",
+                     {"rencana": [f"{i + 1}. {TASK_LABEL[t]}" for i, t in enumerate(tasks)]})
+    return {"tasks": tasks}
+
+
+def next_task(state: IntakeState) -> IntakeState:
+    tasks = list(state.get("tasks", []))
+    return {"current": tasks[0] if tasks else None, "tasks": tasks[1:]}
+
+
 def route(state: IntakeState) -> str:
-    intent = state["u"].intent
-    if intent in ("order_baru", "ubah_order"):
-        return "build_lines"
-    return {"jawab_pertanyaan": "resolve_answer", "bukti_bayar": "payment_proof", "janji_bayar": "promise"}.get(intent, "simple_reply")
+    return TASK_NODE[state["current"]] if state.get("current") else END
 
 
 def _uom_factor(s: Session, product_id: int, uom: str) -> int:
@@ -159,6 +190,17 @@ def build_lines(state: IntakeState, config) -> IntakeState:
     return {"drafts": drafts}
 
 
+def apply_delivery_request(s: Session, order: SalesOrder, u) -> None:
+    req = u.requested_delivery
+    if req is None or req.days_from_today is None:
+        return
+    order.requested_delivery = clock.today(s) + timedelta(days=max(0, req.days_from_today))
+    order.requested_not_before = req.not_before
+    tracing.step("think", "Pelanggan minta waktu kirim tertentu",
+                 {"ungkapan": req.date_text, "tanggal": order.requested_delivery.isoformat(),
+                  "jenis": "paling cepat" if req.not_before else "tepat di hari itu"})
+
+
 def decide(state: IntakeState, config) -> IntakeState:
     s = _session(config)
     u, cid, drafts = state["u"], state["customer_id"], state["drafts"]
@@ -170,10 +212,12 @@ def decide(state: IntakeState, config) -> IntakeState:
         return {"outcome": "kosong"}
 
     auto_at = policy.autonomy_threshold(s, customer.autonomy_level)
-    questions, needs_review = [], []
+    questions, needs_review, unknown = [], [], []
     for i, d in enumerate(drafts):
         plausible = [c for c in d["candidates"] if c["score"] >= 60][:3]
-        if not d["product_id"] and plausible:
+        if not d["product_id"] and not plausible:
+            unknown.append(d["raw"])
+        elif not d["product_id"] and plausible:
             questions.append({"line_index": i, "type": "choose_product", "raw": d["raw"], "qty": d["qty"], "unit": d["unit"],
                               "options": [{"product_id": c["product_id"], "name": c["name"]} for c in plausible]})
         elif d["product_id"] and d["confidence"] < ASK_BELOW and len(plausible) >= 2:
@@ -184,26 +228,27 @@ def decide(state: IntakeState, config) -> IntakeState:
         elif d["product_id"] and d["confidence"] < auto_at:
             needs_review.append(d["raw"])
 
-    updating = None
-    if u.intent == "ubah_order":
-        updating = latest_open_order(s, cid, OPEN_ORDER_STATES)
+    if unknown and len(unknown) == len(drafts):
+        request_approval(s, "unknown_item", "message", msg.id,
+                         f"Barang tidak ada di katalog: {', '.join(unknown)}. Hubungi pelanggan atau tambahkan ke katalog.",
+                         {"items": unknown, "text": msg.text})
+        reply(s, customer, templates.unknown_items(customer.owner_name, unknown))
+        tracing.summarize(f"Barang di luar katalog dari {customer.name}: {', '.join(unknown)}")
+        return {"outcome": "unknown"}
+
     lines = [{"raw_text": d["raw"][:200], "product_id": d["product_id"], "qty": d["qty"], "uom": d["uom"] or (d["unit"] or ""),
               "qty_base": d["qty_base"], "confidence": round(d["confidence"], 3), "candidates": d["candidates"][:5]}
              for d in drafts]
-    if updating:
-        if updating.status == "CONFIRMED":
-            release_reservation(s, updating)
-        for ln in lines:
-            s.add(SalesOrderLine(order_id=updating.id, **ln))
-        s.flush()
-        s.refresh(updating)
-        order, created = updating, False
-    else:
-        res = create_sales_order(s, customer_id=cid, message_id=msg.id, lines=lines)
-        order, created = s.get(SalesOrder, res.data["order_id"]), True
+    res = create_sales_order(s, customer_id=cid, message_id=msg.id, lines=lines)
+    order, created = s.get(SalesOrder, res.data["order_id"]), True
     order.requested_discount_pct = u.requested_discount_pct
+    apply_delivery_request(s, order, u)
     tracing.link("sales_order", order.id, cid)
     touch(s, order)
+    if unknown:
+        request_approval(s, "unknown_item", "sales_order", order.id,
+                         f"Barang tidak ada di katalog: {', '.join(unknown)}. Order lain tetap diproses.",
+                         {"items": unknown})
 
     db_lines = order.lines[-len(lines):]
     if questions:
@@ -254,7 +299,7 @@ def resolve_answer(state: IntakeState, config) -> IntakeState:
 
     questions = order.pending_question["questions"]
     choices = list(u.choices)
-    remaining = []
+    remaining, not_listed = [], []
     for q in questions:
         line = s.get(SalesOrderLine, q["line_id"])
         if not choices:
@@ -269,18 +314,29 @@ def resolve_answer(state: IntakeState, config) -> IntakeState:
             catalog.learn_alias(s, q["raw"], pid, cid, "customer")
             tracing.step("tool", "learn_alias", {"risk": "write", "input": {"tulisan": q["raw"], "produk": s.get(Product, pid).name},
                                                  "output": "Alias disimpan untuk pelanggan ini"})
+        elif q["type"] == "choose_product" and pick == len(q["options"]) + 1:
+            line.product_id, line.qty_base, line.confidence = None, 0, 0.0
+            not_listed.append(q["raw"])
         elif q["type"] == "qty" and pick > 0:
             factor = _uom_factor(s, line.product_id, line.uom)
             line.qty, line.qty_base, line.confidence = float(pick), pick * factor, 0.99
         else:
             remaining.append(q)
     s.flush()
+    if not_listed:
+        tracing.step("decision", "Pelanggan menyebut barang di luar pilihan katalog", {"barang": not_listed})
+        request_approval(s, "unknown_item", "sales_order", order.id,
+                         f"Barang tidak ada di katalog: {', '.join(not_listed)}.", {"items": not_listed})
     if remaining:
         order.pending_question = {"questions": remaining, "text": templates.clarification(customer.owner_name, remaining)}
         reply(s, customer, order.pending_question["text"])
         return {"outcome": "reask"}
     order.pending_question = None
     tracing.step("decision", "Semua pertanyaan terjawab", {})
+    if not [ln for ln in order.lines if ln.product_id]:
+        set_order_status(s, order_id=order.id, status="CANCELLED", actor="intake_agent", note="Tidak ada barang katalog")
+        reply(s, customer, templates.unknown_items(customer.owner_name, not_listed))
+        return {"outcome": "unknown"}
     if customer.autonomy_level == 0:
         set_order_status(s, order_id=order.id, status="PENDING_REVIEW", actor="intake_agent")
         request_approval(s, "order_review", "sales_order", order.id, "Level otonomi 0: draft wajib dicek admin.", {})
@@ -290,6 +346,148 @@ def resolve_answer(state: IntakeState, config) -> IntakeState:
     order.auto_processed = True
     events.emit(s, "order.matched", "sales_order", order.id, {})
     return {"outcome": "matched"}
+
+
+MODIFIABLE = ("RECEIVED", "NEEDS_CLARIFICATION", "PENDING_REVIEW", "MATCHED", "SUBSTITUTION_OFFERED", "STOCK_CHECKED",
+              "ON_HOLD_CREDIT", "PENDING_APPROVAL", "CONFIRMED")
+
+
+def _find_line(s: Session, order: SalesOrder, item: str, cid: int) -> SalesOrderLine | None:
+    """Matches 'rinso' in a change request to the order line it refers to."""
+    m = catalog.match_catalog(s, raw=item, customer_id=cid).data or {}
+    for ln in order.lines:
+        if ln.product_id and ln.product_id == m.get("product_id"):
+            return ln
+    for c in m.get("candidates", []):
+        for ln in order.lines:
+            if ln.product_id == c["product_id"] and c["score"] >= 80:
+                return ln
+    for ln in order.lines:
+        if catalog.norm(item) and catalog.norm(item) in catalog.norm(ln.raw_text + " " + (ln.product.name if ln.product else "")):
+            return ln
+    return None
+
+
+def _set_qty(s: Session, line: SalesOrderLine, qty: float, unit: str | None, cid: int) -> None:
+    if unit and unit != line.uom:
+        uom, factor, _ = catalog.resolve_uom(s, line.product_id, unit, catalog.usual_basket_data(s, cid))
+        line.uom = uom
+    else:
+        factor = _uom_factor(s, line.product_id, line.uom)
+    line.qty, line.qty_base, line.backorder_base = qty, int(round(qty * factor)), 0
+
+
+def _close_approvals(s: Session, order: SalesOrder) -> None:
+    from app.models import Approval
+
+    for a in s.query(Approval).filter_by(entity_type="sales_order", entity_id=order.id, status="PENDING"):
+        a.status, a.decided_by = "SUPERSEDED", "intake_agent"
+
+
+def change_order(state: IntakeState, config) -> IntakeState:
+    s = _session(config)
+    u, cid = state["u"], state["customer_id"]
+    customer = s.get(Customer, cid)
+    owner = customer.owner_name
+    order = latest_open_order(s, cid, MODIFIABLE)
+    if order is None:
+        shipped = (s.query(SalesOrder).filter(SalesOrder.customer_id == cid, SalesOrder.is_history.is_(False),
+                                              SalesOrder.status.in_(["INVOICED", "DELIVERED"]))
+                   .order_by(SalesOrder.created_at.desc()).first())
+        if shipped:
+            request_approval(s, "handoff", "message", state["message_id"],
+                             f"Pelanggan minta ubah {shipped.number} yang sudah dikirim. Mungkin perlu retur.",
+                             {"text": s.get(Message, state["message_id"]).text})
+            reply(s, customer, templates.already_shipped(owner, shipped))
+        else:
+            reply(s, customer, templates.no_open_order(owner))
+        return {"outcome": "no_order"}
+    tracing.link("sales_order", order.id, cid)
+    was_confirmed = order.status == "CONFIRMED"
+
+    if any(c.op == "batal_semua" for c in u.changes):
+        if was_confirmed:
+            release_reservation(s, order)
+        _close_approvals(s, order)
+        order.pending_question = None
+        set_order_status(s, order_id=order.id, status="CANCELLED", actor="intake_agent", note="Dibatalkan pelanggan")
+        tracing.step("decision", f"{order.number} dibatalkan atas permintaan pelanggan", {"status_sebelumnya": order.status})
+        reply(s, customer, templates.order_cancelled(owner, order))
+        tracing.summarize(f"{order.number} dibatalkan pelanggan")
+        return {"outcome": "cancelled"}
+
+    if was_confirmed:
+        release_reservation(s, order)
+    notes, applied = [], []
+    for c in u.changes:
+        line = _find_line(s, order, c.item or "", cid) if c.item else None
+        if c.op == "tambah":
+            if line:
+                _set_qty(s, line, line.qty + (c.qty or 1), c.unit, cid)
+                applied.append(f"{line.product.name} ditambah jadi {templates.qty_text(line.qty, line.uom)}")
+            else:
+                m = catalog.match_catalog(s, raw=c.item, customer_id=cid).data or {}
+                d = _draft(s, c.item, m.get("product_id"), c.qty or 1, c.unit, m.get("confidence", 0), m.get("method", ""),
+                           m.get("candidates", []), catalog.usual_basket_data(s, cid), [])
+                if d["product_id"] and d["confidence"] >= ASK_BELOW:
+                    s.add(SalesOrderLine(order_id=order.id, raw_text=c.item[:200], product_id=d["product_id"], qty=d["qty"],
+                                         uom=d["uom"], qty_base=d["qty_base"], confidence=round(d["confidence"], 3)))
+                    applied.append(f"{d['name']} {templates.qty_text(d['qty'], d['uom'])} ditambahkan")
+                else:
+                    notes.append(f"\"{c.item}\" belum bisa kami pastikan, mohon tulis merek dan ukurannya.")
+            continue
+        if line is None:
+            notes.append(f"\"{c.item}\" tidak ada di pesanan {order.number}.")
+            continue
+        if c.op == "hapus":
+            applied.append(f"{line.product.name if line.product else line.raw_text} dihapus")
+            s.delete(line)
+        elif c.op == "ubah_jumlah" and c.qty is not None:
+            if c.qty <= 0:
+                applied.append(f"{line.product.name} dihapus")
+                s.delete(line)
+            else:
+                _set_qty(s, line, c.qty, c.unit, cid)
+                applied.append(f"{line.product.name} jadi {templates.qty_text(line.qty, line.uom)}")
+        elif c.op == "kurangi":
+            left = line.qty - (c.qty or 1)
+            if left <= 0:
+                applied.append(f"{line.product.name} dihapus")
+                s.delete(line)
+            else:
+                _set_qty(s, line, left, None, cid)
+                applied.append(f"{line.product.name} dikurangi jadi {templates.qty_text(line.qty, line.uom)}")
+    s.flush()
+    s.refresh(order)
+    apply_delivery_request(s, order, u)
+    tracing.step("decision", f"Perubahan pada {order.number}", {"diterapkan": applied, "catatan": notes})
+
+    if not applied:
+        reply(s, customer, "\n".join([f"{owner}, pesanan {order.number} belum kami ubah."] + notes))
+        if was_confirmed:
+            from app.tools.orders import reserve_stock
+            reserve_stock(s, order_id=order.id)
+        return {"outcome": "nothing_changed"}
+    if not [ln for ln in order.lines if ln.product_id]:
+        _close_approvals(s, order)
+        set_order_status(s, order_id=order.id, status="CANCELLED", actor="intake_agent", note="Semua barang dihapus")
+        reply(s, customer, templates.order_cancelled(owner, order))
+        return {"outcome": "cancelled"}
+
+    _close_approvals(s, order)
+    if order.status == "NEEDS_CLARIFICATION":
+        live = {ln.id for ln in order.lines}
+        questions = [q for q in (order.pending_question or {}).get("questions", []) if q["line_id"] in live]
+        if questions:
+            order.pending_question = {"questions": questions, "text": templates.clarification(owner, questions)}
+            reply(s, customer, "\n".join([f"Baik {owner}, perubahan kami catat: {'; '.join(applied)}."] + notes)
+                  + "\n\n" + order.pending_question["text"])
+            return {"outcome": "changed_waiting"}
+    order.pending_question = None
+    set_order_status(s, order_id=order.id, status="MATCHED", actor="intake_agent")
+    events.emit(s, "order.matched", "sales_order", order.id, {"updated": True, "notes": notes})
+    tracing.summarize(f"{order.number} diubah pelanggan: {'; '.join(applied)}")
+    return {"outcome": "changed"}
 
 
 def payment_proof(state: IntakeState, config) -> IntakeState:
@@ -318,13 +516,27 @@ def simple_reply(state: IntakeState, config) -> IntakeState:
     u, cid = state["u"], state["customer_id"]
     customer = s.get(Customer, cid)
     owner = customer.owner_name
-    if u.intent == "klaim_bayar":
-        reply(s, customer, templates.ask_for_proof(owner))
-    elif u.intent == "tanya_status":
-        order = latest_open_order(s, cid) or (s.query(SalesOrder).filter_by(customer_id=cid, is_history=False)
-                                               .order_by(SalesOrder.created_at.desc()).first())
+    current = state.get("current") or u.intent
+    if current == "klaim_bayar":
+        from app.models import PaymentProof
+
+        recent = (s.query(PaymentProof).filter(PaymentProof.customer_id == cid,
+                                               PaymentProof.status == "AWAITING_MUTATION")
+                  .order_by(PaymentProof.id.desc()).first())
+        if recent:
+            tracing.step("think", "Bukti transfer sudah ada, tidak perlu minta lagi", {"nominal": recent.amount})
+            reply(s, customer, templates.proof_already_received(owner, recent.amount))
+        else:
+            reply(s, customer, templates.ask_for_proof(owner))
+    elif current == "tanya_status":
+        # "pesanan kemarin" never means the order this same message just created.
+        q = s.query(SalesOrder).filter(SalesOrder.customer_id == cid, SalesOrder.is_history.is_(False),
+                                       (SalesOrder.source_message_id.is_(None))
+                                       | (SalesOrder.source_message_id != state["message_id"]))
+        order = (q.filter(SalesOrder.status.in_(OPEN_ORDER_STATES)).order_by(SalesOrder.created_at.desc()).first()
+                 or q.order_by(SalesOrder.created_at.desc()).first())
         reply(s, customer, templates.order_status(owner, order) if order else templates.no_open_order(owner))
-    elif u.intent == "komplain":
+    elif current == "komplain":
         request_approval(s, "complaint", "message", state["message_id"], "Keluhan pelanggan perlu ditangani admin.",
                          {"text": s.get(Message, state["message_id"]).text})
         reply(s, customer, templates.complaint_ack(owner))
@@ -336,21 +548,24 @@ def simple_reply(state: IntakeState, config) -> IntakeState:
             request_approval(s, "handoff", "message", state["message_id"], "Pesan di luar alur order dan pembayaran.",
                              {"text": msg.text})
             reply(s, customer, templates.handoff(owner))
-    return {"outcome": u.intent}
+    return {"outcome": current}
 
 
 def _build():
     g = StateGraph(IntakeState)
-    for name, fn in [("load_context", load_context), ("understand", understand), ("build_lines", build_lines),
-                     ("decide", decide), ("resolve_answer", resolve_answer), ("payment_proof", payment_proof),
-                     ("promise", promise), ("simple_reply", simple_reply)]:
+    handlers = [("decide", decide), ("resolve_answer", resolve_answer), ("payment_proof", payment_proof),
+                ("promise", promise), ("simple_reply", simple_reply), ("change_order", change_order)]
+    for name, fn in [("load_context", load_context), ("understand", understand), ("plan", plan),
+                     ("next_task", next_task), ("build_lines", build_lines), *handlers]:
         g.add_node(name, fn)
     g.add_edge(START, "load_context")
     g.add_edge("load_context", "understand")
-    g.add_conditional_edges("understand", route, ["build_lines", "resolve_answer", "payment_proof", "promise", "simple_reply"])
+    g.add_edge("understand", "plan")
+    g.add_edge("plan", "next_task")
+    g.add_conditional_edges("next_task", route, sorted(set(TASK_NODE.values())) + [END])
     g.add_edge("build_lines", "decide")
-    for terminal in ("decide", "resolve_answer", "payment_proof", "promise", "simple_reply"):
-        g.add_edge(terminal, END)
+    for name, _ in handlers:
+        g.add_edge(name, "next_task")
     return g.compile()
 
 

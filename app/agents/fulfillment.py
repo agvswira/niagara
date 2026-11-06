@@ -18,6 +18,7 @@ class FulfillState(TypedDict, total=False):
     offers: list[dict]
     notes: list[str]
     substitution_answer: bool | None
+    updated: bool
 
 
 def _s(config) -> Session:
@@ -47,7 +48,7 @@ def check(state: FulfillState, config) -> FulfillState:
                  for ln in order.lines if ln.product_id and ln.qty_base > 0 and not res[ln.product_id]["ok"]]
     if shortages:
         tracing.step("think", f"Stok kurang untuk {len(shortages)} barang", shortages)
-    return {"shortages": shortages, "notes": []}
+    return {"shortages": shortages, "notes": list(state.get("notes", []))}
 
 
 def route_after_check(state: FulfillState) -> str:
@@ -140,11 +141,27 @@ def book_slot(state: FulfillState, config) -> FulfillState:
     s = _s(config)
     order = s.get(SalesOrder, state["order_id"])
     customer = s.get(Customer, order.customer_id)
-    slot = get_delivery_slot(s, area=customer.area).data
+    requested = order.requested_delivery.isoformat() if order.requested_delivery else None
+    slot = get_delivery_slot(s, area=customer.area, requested=requested, not_before=order.requested_not_before).data
     order.delivery_date = date.fromisoformat(slot["date"])
+    notes = list(state.get("notes", []))
+    if requested:
+        want = order.requested_delivery
+        if slot["met"]:
+            pass  # the confirmation already says "sesuai permintaan" next to the delivery date
+        elif slot["reason"] == "not_route_day":
+            notes.append(f"{templates.HARI[want.weekday()]} bukan jadwal rute {customer.area}, jadi paling dekat"
+                         f" {templates.tanggal(order.delivery_date)}.")
+        else:
+            notes.append(f"{templates.tanggal(want)} belum terkejar karena lewat jam potong pesanan"
+                         f" {slot['cutoff_hour']}.00, jadi paling cepat {templates.tanggal(order.delivery_date)}.")
+        tracing.step("decision", "Jadwal kirim disesuaikan dengan permintaan pelanggan",
+                     {"diminta": requested, "dijadwalkan": slot["date"], "terpenuhi": slot["met"],
+                      "alasan": slot["reason"], "hari_rute": slot["route_days"]})
     set_order_status(s, order_id=order.id, status="STOCK_CHECKED", actor="fulfillment_agent")
     touch(s, order)
-    events.emit(s, "order.stock_checked", "sales_order", order.id, {"notes": state.get("notes", [])})
+    events.emit(s, "order.stock_checked", "sales_order", order.id,
+                {"notes": notes, "updated": bool(state.get("updated"))})
     tracing.summarize(f"{order.number}: stok aman, jadwal kirim {slot['date']}")
     return {}
 
@@ -171,7 +188,8 @@ def on_matched(s: Session, ev) -> None:
     order = s.get(SalesOrder, ev.entity_id)
     with tracing.agent_run(s, "fulfillment", event_id=ev.id, entity_type="sales_order", entity_id=order.id,
                            customer_id=order.customer_id):
-        GRAPH.invoke({"order_id": order.id}, config={"configurable": {"session": s}})
+        GRAPH.invoke({"order_id": order.id, "updated": bool(ev.payload.get("updated")),
+                      "notes": list(ev.payload.get("notes", []))}, config={"configurable": {"session": s}})
 
 
 @events.on("order.substitution_answered")

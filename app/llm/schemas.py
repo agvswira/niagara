@@ -37,9 +37,26 @@ class PaymentProof(BaseModel):
     ref: Optional[str] = None
 
 
+class OrderChange(BaseModel):
+    op: Literal["tambah", "kurangi", "ubah_jumlah", "hapus", "batal_semua"] = Field(
+        description="tambah/kurangi = selisih jumlah, ubah_jumlah = jumlah akhir, hapus = buang satu barang, batal_semua = batalkan pesanan")
+    item: Optional[str] = Field(default=None, description="Nama barang seperti ditulis pelanggan. Kosong untuk batal_semua")
+    qty: Optional[float] = None
+    unit: Optional[str] = None
+
+
+class DeliveryRequest(BaseModel):
+    date_text: str = Field(description="Ungkapan asli, misal 'kamis' atau 'tgl 12'")
+    days_from_today: Optional[int] = None
+    not_before: bool = Field(default=False, description="True untuk 'jangan sebelum ...'")
+
+
 class Understanding(BaseModel):
-    intent: Intent
+    intent: Intent = Field(description="Niat utama pesan")
+    also_intents: list[Intent] = Field(default_factory=list, description="Niat lain di pesan yang sama, misal bukti bayar sekaligus order baru")
     lines: list[OrderLine] = Field(default_factory=list)
+    changes: list[OrderChange] = Field(default_factory=list, description="Perubahan pada pesanan yang sudah ada")
+    requested_delivery: Optional[DeliveryRequest] = None
     uses_usual_order: bool = Field(default=False, description="Pelanggan minta 'yang biasa' / 'kayak kemarin'")
     replacements: list[Replacement] = Field(default_factory=list)
     removals: list[str] = Field(default_factory=list)
