@@ -1,0 +1,52 @@
+{"id": "E01", "tag": "mudah", "text": "indomie goreng 2 dus, aqua tgg 3 dus", "expected": [["MI-IDG", 2, "dus"], ["AM-AQ600", 3, "dus"]]}
+{"id": "E02", "tag": "mudah", "text": "gulaku 2 karung", "expected": [["GL-GLK1", 2, "karung"]]}
+{"id": "E03", "tag": "mudah", "text": "rinso 3 dus, sunlight 2 dus", "expected": [["DT-RS800", 3, "dus"], ["DT-SNL", 2, "dus"]]}
+{"id": "E04", "tag": "mudah", "text": "kapal api mix 4 dus", "expected": [["KP-KA165", 4, "dus"]]}
+{"id": "E05", "tag": "mudah", "text": "le minerale 5 dus", "expected": [["AM-LM600", 5, "dus"]]}
+{"id": "E06", "tag": "mudah", "text": "bimoli 2 liter 2 dus, sania 1 liter 3 dus", "expected": [["MG-BML2", 2, "dus"], ["MG-SN1", 3, "dus"]]}
+{"id": "E07", "tag": "mudah", "text": "telur 10 kg", "expected": [["TL-TLR", 10, "kg"]]}
+{"id": "E08", "tag": "mudah", "text": "beras 5kg 4 karung", "expected": [["BR-SB5", 4, "karung"]]}
+{"id": "E09", "tag": "mudah", "text": "lifebuoy 2 dus, giv 1 dus", "expected": [["SB-LB", 2, "dus"], ["SB-GV", 1, "dus"]]}
+{"id": "E10", "tag": "mudah", "text": "pepsodent 1 dus", "expected": [["SB-PPS", 1, "dus"]]}
+{"id": "E11", "tag": "mudah", "text": "sariwangi 2 dus", "expected": [["TH-SR25", 2, "dus"]]}
+{"id": "E12", "tag": "mudah", "text": "khong guan 3 dus", "expected": [["BS-KG", 3, "dus"]]}
+{"id": "E13", "tag": "mudah", "text": "masako 2 dus, royco 1 dus", "expected": [["BM-MSK", 2, "dus"], ["BM-RKO", 1, "dus"]]}
+{"id": "E14", "tag": "mudah", "text": "kecap bango 2 dus", "expected": [["BM-BLB", 2, "dus"]]}
+{"id": "E15", "tag": "mudah", "text": "susu bendera 3 dus", "expected": [["SU-FF", 3, "dus"]]}
+{"id": "M01", "tag": "sedang", "text": "indomi goreng 3dus", "expected": [["MI-IDG", 3, "dus"]]}
+{"id": "M02", "tag": "sedang", "text": "mie sedap goreng 2 dos", "expected": [["MI-MSG", 2, "dus"]]}
+{"id": "M03", "tag": "sedang", "text": "aqua 1500 2 dus", "expected": [["AM-AQ1500", 2, "dus"]]}
+{"id": "M04", "tag": "sedang", "text": "aqua gelas 5 dus", "expected": [["AM-AQ220", 5, "dus"]]}
+{"id": "M05", "tag": "sedang", "text": "soklin 2 krt", "expected": [["DT-SKL", 2, "dus"]]}
+{"id": "M06", "tag": "sedang", "text": "kopi abc 3 dus", "expected": [["KP-ABC", 3, "dus"]]}
+{"id": "M07", "tag": "sedang", "text": "teh kotak 4 dus", "expected": [["TH-SS", 4, "dus"]]}
+{"id": "M08", "tag": "sedang", "text": "Pesen roma kelapa 2 dus ya mas", "expected": [["BS-RM", 2, "dus"]]}
+{"id": "M09", "tag": "sedang", "text": "minyak sania 2 liter x2", "expected": [["MG-SN2", 2, "dus"]]}
+{"id": "M10", "tag": "sedang", "text": "gula rose brand 1 karung", "expected": [["GL-RS1", 1, "karung"]]}
+{"id": "M11", "tag": "sedang", "text": "indomilk 2 dus\nkecap abc 1 dus", "expected": [["SU-IDM", 2, "dus"], ["BM-ABC", 1, "dus"]]}
+{"id": "M12", "tag": "sedang", "text": "lifeboy 3 dus", "expected": [["SB-LB", 3, "dus"]]}
+{"id": "M13", "tag": "sedang", "text": "pepsoden 2 dus", "expected": [["SB-PPS", 2, "dus"]]}
+{"id": "M14", "tag": "sedang", "text": "top coffee 2 dus", "expected": [["KP-TOP", 2, "dus"]]}
+{"id": "M15", "tag": "sedang", "text": "kapal api bubuk 1 dus", "expected": [["KP-KAB", 1, "dus"]]}
+{"id": "M16", "tag": "sedang", "text": "mie sedaap soto 3 dus, indomie kari 2 dus", "expected": [["MI-MSS", 3, "dus"], ["MI-IDKR", 2, "dus"]]}
+{"id": "M17", "tag": "sedang", "text": "aqua sedang 4 dus", "expected": [["AM-AQ600", 4, "dus"]]}
+{"id": "M18", "tag": "sedang", "text": "le mineral 1500 2 dus", "expected": [["AM-LM1500", 2, "dus"]]}
+{"id": "M19", "tag": "sedang", "text": "bimoli 1l 6 pouch", "expected": [["MG-BML1", 6, "pouch"]]}
+{"id": "M20", "tag": "sedang", "text": "2 dus indomie soto", "expected": [["MI-IDS", 2, "dus"]]}
+{"id": "S01", "tag": "sulit", "text": "Assalamualaikum pak, besok kirim ya: idm goreng 4 dus, aqua tgg 2 dus, gulaku 1 karung. Makasih", "expected": [["MI-IDG", 4, "dus"], ["AM-AQ600", 2, "dus"], ["GL-GLK1", 1, "karung"]]}
+{"id": "S02", "tag": "sulit", "text": "tolong order\n1. indomie goreng 2 dus\n2. sedap goreng 2 dus\n3. bimoli 2l 1 dus", "expected": [["MI-IDG", 2, "dus"], ["MI-MSG", 2, "dus"], ["MG-BML2", 1, "dus"]]}
+{"id": "S03", "tag": "sulit", "text": "rinso 800 2 dus + so klin 1 dus", "expected": [["DT-RS800", 2, "dus"], ["DT-SKL", 1, "dus"]]}
+{"id": "S04", "tag": "sulit", "text": "telor 5 kg, beras ramos 2 karung", "expected": [["TL-TLR", 5, "kg"], ["BR-SB5", 2, "karung"]]}
+{"id": "S05", "tag": "sulit", "text": "susu indomilk 2 dus, frisian flag 1 dus", "expected": [["SU-IDM", 2, "dus"], ["SU-FF", 1, "dus"]]}
+{"id": "S06", "tag": "sulit", "text": "royco ayam 3 dus", "expected": [["BM-RKO", 3, "dus"]]}
+{"id": "S07", "tag": "sulit", "text": "kong guan 1 dus", "expected": [["BS-KG", 1, "dus"]]}
+{"id": "S08", "tag": "sulit", "text": "nggih pak, kintun indomie goreng 2 dus kalih aqua tgg 2 dus", "expected": [["MI-IDG", 2, "dus"], ["AM-AQ600", 2, "dus"]]}
+{"id": "S09", "tag": "sulit", "text": "pesen sunlight 1 dos ambek rinso 1 dos", "expected": [["DT-SNL", 1, "dus"], ["DT-RS800", 1, "dus"]]}
+{"id": "S10", "tag": "sulit", "text": "mas minta indomie goreng sepuluh dus", "expected": [["MI-IDG", 10, "dus"]]}
+{"id": "A01", "tag": "ambigu", "ambiguous": true, "text": "aqua 3 dus", "expected": [["AM-AQ600", 3, "dus"]]}
+{"id": "A02", "tag": "ambigu", "ambiguous": true, "text": "kopi 2 dus", "expected": [["KP-KA165", 2, "dus"]]}
+{"id": "A03", "tag": "ambigu", "ambiguous": true, "text": "minyak 2 dus", "expected": [["MG-BML2", 2, "dus"]]}
+{"id": "A04", "tag": "ambigu", "ambiguous": true, "text": "sabun 3 dus", "expected": [["SB-LB", 3, "dus"]]}
+{"id": "A05", "tag": "ambigu", "ambiguous": true, "text": "indomie 5 dus", "expected": [["MI-IDG", 5, "dus"]]}
+{"id": "A06", "tag": "ambigu", "ambiguous": true, "text": "gula 2 karung", "expected": [["GL-GLK1", 2, "karung"]]}
+{"id": "A07", "tag": "ambigu", "ambiguous": true, "text": "kecap 2 dus", "expected": [["BM-BLB", 2, "dus"]]}

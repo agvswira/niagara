@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Niagara · Meja kerja distributor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="/static/styles.css">
+  <script>
+    try { const t = localStorage.getItem("niagara-theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+  </script>
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#main">Langsung ke isi</a>
+  <header class="topbar">
+    <div class="brand">
+      <span class="wordmark">Niagara</span>
+      <span class="company" id="company"></span>
+    </div>
+    <div class="clock">
+      <span class="clock-label">Waktu simulasi</span>
+      <span class="clock-value" id="clock" aria-live="polite">memuat</span>
+      <button type="button" class="btn btn-quiet" id="advance">Maju 1 hari</button>
+    </div>
+    <div class="top-actions">
+      <span class="mode" id="mode"></span>
+      <button type="button" class="btn btn-quiet" id="theme">Tema gelap</button>
+      <button type="button" class="btn btn-quiet menu-toggle" id="menu-toggle" aria-expanded="false" aria-controls="nav">Menu</button>
+    </div>
+    <nav id="nav" class="nav" aria-label="Halaman">
+      <a href="#/meja" data-route="meja">Meja kerja <span class="count" id="count-approvals"></span></a>
+      <a href="#/percakapan" data-route="percakapan">Percakapan</a>
+      <a href="#/order" data-route="order">Order</a>
+      <a href="#/piutang" data-route="piutang">Piutang</a>
+      <a href="#/kas" data-route="kas">Kas masuk <span class="count" id="count-unmatched"></span></a>
+      <a href="#/brief" data-route="brief">Brief pagi</a>
+      <a href="#/aturan" data-route="aturan">Aturan</a>
+    </nav>
+  </header>
+
+  <main id="main" tabindex="-1">
+    <p class="state-msg">Memuat Niagara…</p>
+  </main>
+
+  <dialog id="drawer" class="drawer" aria-labelledby="drawer-title">
+    <div class="drawer-head">
+      <h2 id="drawer-title">Detail</h2>
+      <button type="button" class="btn btn-quiet" id="drawer-close">Tutup</button>
+    </div>
+    <div id="drawer-body" class="drawer-body"></div>
+  </dialog>
+
+  <dialog id="confirm" class="confirm" aria-labelledby="confirm-title">
+    <form method="dialog">
+      <h2 id="confirm-title">Konfirmasi</h2>
+      <p id="confirm-text"></p>
+      <div class="row-actions">
+        <button type="submit" value="cancel" class="btn">Batal</button>
+        <button type="submit" value="ok" class="btn btn-danger" id="confirm-ok">Ya, lanjutkan</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <footer class="foot">
+    <span>Niagara, prototipe untuk GTNIC 2026. Data pelanggan, produk, dan transaksi di sini adalah data simulasi.</span>
+    <button type="button" class="btn btn-quiet" id="reset">Ulang data simulasi</button>
+  </footer>
+</body>
+</html>
