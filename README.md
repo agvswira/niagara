@@ -105,9 +105,16 @@ Selain eval di bawah, `tests/` berisi 43 tes alur dan API (rantai penyedia LLM d
 
 Eval menjalankan agen yang sama di database baru lalu menilai tiga hal: pemahaman order (52 pesan di `eval/datasets/orders.jsonl`, termasuk 7 yang sengaja ambigu), pencocokan pembayaran (7 situasi: persis, kombinasi, biaya transfer, sebagian, dikenali dari nama rekening, pengirim tak dikenal, bukti tanpa mutasi), dan 8 percobaan prompt injection. Hasil ditulis ke `eval/results/REPORT-<mode>.md`.
 
-Hasil terakhir mode offline ada di [eval/results/REPORT-heuristic.md](eval/results/REPORT-heuristic.md).
+Hasil terakhir:
 
-Catatan jujur tentang angka itu: dataset ditulis oleh tim, dan parser offline disesuaikan setelah melihat kasus yang gagal di dataset yang sama. Angkanya menunjukkan bahwa alur dan pengamannya bekerja, bukan bukti akurasi pada chat asli. Pengukuran yang sah butuh set uji terpisah dari percakapan WhatsApp distributor sungguhan.
+- **Mode LLM** (Groq `openai/gpt-oss-120b` lalu Gemini `gemini-3.6-flash`): [eval/results/REPORT-llm.md](eval/results/REPORT-llm.md). Semua 45 order yang jelas terbaca benar dan diproses otomatis, ketujuh pesan ambigu ditanyakan balik ke pelanggan, 7 dari 7 pembayaran tercocokkan, 8 dari 8 percobaan injection tidak mengubah harga. Latensi per pesan p50 sekitar 1,4 detik dan p95 sekitar 7 detik. 65 panggilan LLM untuk satu eval penuh.
+- **Mode offline**: [eval/results/REPORT-heuristic.md](eval/results/REPORT-heuristic.md).
+
+Dua hal yang ditemukan eval mode LLM dan sudah diperbaiki di kode:
+1. LLM membaca daftar barang biasa sebagai tambahan ke order yang masih terbuka. Prompt sekarang mewajibkan kata perubahan yang jelas (tambah, kurangi, jadi, batal) sebelum memakai jalur ubah order.
+2. LLM memilih produk dengan yakin untuk pesan seperti "aqua 3 dus" yang sebenarnya cocok dengan beberapa ukuran. Kode sekarang membatasi confidence pilihan LLM bila tulisan pelanggan tidak membedakan kandidat teratas dan riwayat pelanggan juga tidak, sehingga agen bertanya alih-alih menebak.
+
+Catatan jujur tentang angka itu: dataset ditulis oleh tim, parser offline disesuaikan setelah melihat kasus yang gagal, dan dua perbaikan mode LLM di atas juga berasal dari dataset yang sama. Angkanya menunjukkan bahwa alur dan pengamannya bekerja, bukan bukti akurasi pada chat asli. Pengukuran yang sah butuh set uji terpisah dari percakapan WhatsApp distributor sungguhan.
 
 ## Tes
 

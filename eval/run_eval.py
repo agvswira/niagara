@@ -50,9 +50,10 @@ def factor(s, product_id: int, uom: str) -> int:
 
 
 def cancel_waiting(cid: int) -> None:
+    """Every case starts with no open order, so a plain item list is never read as a change to the previous case."""
     with db.session_scope() as s:
         for o in s.query(SalesOrder).filter(SalesOrder.customer_id == cid, SalesOrder.is_history.is_(False),
-                                            SalesOrder.status.notin_(["CONFIRMED", "CANCELLED", "INVOICED"])):
+                                            SalesOrder.status.notin_(["CANCELLED", "INVOICED"])):
             o.status = "CANCELLED"
 
 

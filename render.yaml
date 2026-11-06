@@ -13,7 +13,7 @@ services:
       - key: GEMINI_API_KEY
         sync: false
       - key: GEMINI_MODEL
-        value: gemini-2.5-flash
+        value: gemini-3.6-flash
       - key: NIAGARA_DEMO_PASSWORD
         sync: false
       - key: NIAGARA_SECRET

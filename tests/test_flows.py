@@ -224,6 +224,22 @@ def test_requested_delivery_day_is_honoured_or_explained():
     assert "bukan jadwal rute" in replies(10)[-1]
 
 
+def test_confident_llm_guess_on_ambiguous_item_still_asks_the_customer():
+    from app.llm.providers import Provider
+
+    class SureOfItself(Provider):
+        name = "yakin"
+
+        def generate(self, system, text, schema, media_path=None, kind="text"):
+            if schema.__name__ == "RerankResult":
+                return schema(choice=0, confidence=0.97, reason="pilih yang pertama")
+            return schema.model_validate({"intent": "order_baru", "lines": [{"raw": "aqua", "qty": 3, "unit": "dus"}]})
+
+    set_llm(LLMService(providers=[SureOfItself()]))
+    say(8, "aqua 3 dus")
+    assert last_order(8).status == "NEEDS_CLARIFICATION"
+
+
 @pytest.mark.parametrize("text,expected", [
     ("indomie goreng 2 dus, aqua tgg 3 dus", [("indomie goreng", 2, "dus"), ("aqua tgg", 3, "dus")]),
     ("bimoli 2 liter 5, sunlight x3", [("bimoli 2 liter", 5, None), ("sunlight", 3, None)]),

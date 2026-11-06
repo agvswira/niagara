@@ -34,7 +34,7 @@ def test_compat_provider_sends_schema_and_parses_json():
     assert u.intent == "order_baru" and u.lines[0].qty == 2
     assert seen["body"]["response_format"] == {"type": "json_object"}
     assert seen["body"]["model"] == "model-tes"
-    assert "JSON Schema" in seen["body"]["messages"][0]["content"]
+    assert "intent:" in seen["body"]["messages"][0]["content"] and "$defs" not in seen["body"]["messages"][0]["content"]
     assert seen["auth"] == "Bearer kunci"
 
 

@@ -26,6 +26,35 @@ class Unsupported(ProviderError):
     """The provider cannot handle this input (an image or audio without a capable model)."""
 
 
+def compact_shape(schema: type[BaseModel]) -> str:
+    """A short, TypeScript-like description of the output. A full JSON Schema costs about four times the tokens,
+    which matters on free tiers that cap tokens per minute; pydantic still validates the reply strictly."""
+    full = schema.model_json_schema()
+    defs = full.get("$defs", {})
+
+    def render(node: dict, indent: int) -> str:
+        if "$ref" in node:
+            node = defs[node["$ref"].split("/")[-1]]
+        if "anyOf" in node:
+            parts = [render(n, indent) for n in node["anyOf"] if n.get("type") != "null"]
+            return " | ".join(parts) + (" | null" if any(n.get("type") == "null" for n in node["anyOf"]) else "")
+        if "enum" in node:
+            return " | ".join(f'"{v}"' for v in node["enum"])
+        kind = node.get("type")
+        if kind == "array":
+            return f"[{render(node.get('items', {}), indent)}]"
+        if kind == "object" or "properties" in node:
+            pad = "  " * (indent + 1)
+            rows = []
+            for name, prop in node.get("properties", {}).items():
+                note = prop.get("description")
+                rows.append(f"{pad}{name}: {render(prop, indent + 1)}" + (f"  // {note}" if note else ""))
+            return "{\n" + "\n".join(rows) + "\n" + "  " * indent + "}"
+        return {"integer": "int", "number": "number", "string": "string", "boolean": "bool"}.get(kind, "any")
+
+    return render(full, 0)
+
+
 class Provider:
     name = "provider"
 
@@ -106,10 +135,12 @@ class OpenAICompatProvider(Provider):
     """Groq, OpenRouter, OpenAI, Together, Ollama: anything that speaks POST /chat/completions."""
 
     def __init__(self, name: str, base_url: str, api_key: str, model: str, vision_model: str = "",
-                 audio_model: str = "", timeout: float = 30, transport: httpx.BaseTransport | None = None):
+                 audio_model: str = "", timeout: float = 30, transport: httpx.BaseTransport | None = None,
+                 reasoning_effort: str = ""):
         super().__init__()
         self.name = name
         self.model, self.vision_model, self.audio_model = model, vision_model, audio_model
+        self.reasoning_effort = reasoning_effort
         self.http = httpx.Client(base_url=base_url.rstrip("/"), timeout=timeout, transport=transport,
                                  headers={"Authorization": f"Bearer {api_key}"} if api_key else {})
 
@@ -149,14 +180,15 @@ class OpenAICompatProvider(Provider):
             b64 = base64.b64encode(Path(media_path).read_bytes()).decode()
             user_content = [{"type": "text", "text": text},
                             {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}}]
-        shape = json.dumps(schema.model_json_schema(), ensure_ascii=False, separators=(",", ":"))
         messages = [
-            {"role": "system", "content": f"{system}\n\nBalas HANYA dengan satu objek JSON yang sesuai JSON Schema ini:\n{shape}"},
+            {"role": "system", "content": f"{system}\n\nBalas HANYA dengan satu objek JSON berbentuk:\n{compact_shape(schema)}"},
             {"role": "user", "content": user_content},
         ]
+        body = {"model": model, "messages": messages, "temperature": 0, "response_format": {"type": "json_object"}}
+        if self.reasoning_effort:
+            body["reasoning_effort"] = self.reasoning_effort
         for attempt in range(2):
-            out = self._post("/chat/completions", json={"model": model, "messages": messages, "temperature": 0,
-                                                        "response_format": {"type": "json_object"}})
+            out = self._post("/chat/completions", json=body)
             self.count()
             content = out["choices"][0]["message"]["content"] or ""
             try:

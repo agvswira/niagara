@@ -18,7 +18,8 @@ def build_providers(only: str | None = None) -> list[Provider]:
     if settings.compat_api_key or settings.compat_base_url.startswith("http://localhost"):
         built["compat"] = OpenAICompatProvider(settings.compat_name, settings.compat_base_url, settings.compat_api_key,
                                                settings.compat_model, settings.compat_vision_model,
-                                               settings.compat_audio_model, settings.llm_timeout_seconds)
+                                               settings.compat_audio_model, settings.llm_timeout_seconds,
+                                               reasoning_effort=settings.compat_reasoning_effort)
     if settings.gemini_api_key:
         built["gemini"] = GeminiProvider(settings.gemini_api_key, [settings.gemini_model, settings.gemini_fallback_model],
                                          settings.llm_timeout_seconds)

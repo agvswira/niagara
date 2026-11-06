@@ -134,6 +134,11 @@ def match_catalog(s: Session, raw: str, customer_id: int) -> dict:
         picked = cands[rr.choice]
         if source != "heuristic":
             conf = rr.confidence * (0.95 if picked["product_id"] == top["product_id"] else 0.9)
+            # The text itself does not separate the top candidates and history does not either, so whatever the
+            # LLM picked is a guess. Cap it below the ask threshold: the customer decides, not the model.
+            tied = [c for c in cands if top["score"] - c["score"] < 8]
+            if len(tied) >= 2 and picked["product_id"] not in usual_ids:
+                conf = min(conf, 0.7)
         choice, method = picked, f"rerank_{source}"
     return {"product_id": choice["product_id"], "name": choice["name"], "confidence": round(conf, 3),
             "method": method, "candidates": cands}
