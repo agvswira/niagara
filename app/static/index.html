@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="id">
+<html lang="id" data-theme="dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -7,71 +7,97 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
-  <link rel="stylesheet" href="/static/styles.css?v=6">
+  <link rel="stylesheet" href="/static/styles.css?v=7">
   <script>
     try { const t = localStorage.getItem("niagara-theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
   </script>
-  <script src="/static/app.js?v=6" defer></script>
+  <script src="/static/app.js?v=7" defer></script>
 </head>
-<body>
+<body class="signed-out">
   <a class="skip" href="#main">Langsung ke isi</a>
-  <header class="topbar" id="topbar" hidden>
-    <div class="brand">
+
+  <header class="mobilebar">
+    <span class="wordmark">Niagara</span>
+    <button type="button" class="btn btn-ghost" id="menu-toggle" aria-expanded="false" aria-controls="sidebar">Menu</button>
+  </header>
+
+  <aside class="sidebar" id="sidebar">
+    <div class="side-brand">
       <span class="wordmark">Niagara</span>
       <span class="company" id="company"></span>
     </div>
-    <div class="clock">
-      <span class="clock-label">Waktu simulasi</span>
-      <span class="clock-value" id="clock" aria-live="polite">memuat</span>
-      <button type="button" class="btn btn-quiet" id="advance">Maju 1 hari</button>
-    </div>
-    <div class="top-actions">
-      <span class="mode" id="mode"></span>
-      <span class="who" id="who"></span>
-      <button type="button" class="btn btn-quiet" id="theme">Tema gelap</button>
-      <button type="button" class="btn btn-quiet" id="logout">Keluar</button>
-      <button type="button" class="btn btn-quiet menu-toggle" id="menu-toggle" aria-expanded="false" aria-controls="nav">Menu</button>
-    </div>
-    <nav id="nav" class="nav" aria-label="Halaman">
-      <a href="#/meja" data-route="meja">Meja kerja <span class="count" id="count-approvals"></span></a>
-      <a href="#/percakapan" data-route="percakapan">Percakapan</a>
-      <a href="#/order" data-route="order">Order</a>
-      <a href="#/piutang" data-route="piutang">Piutang</a>
-      <a href="#/stok" data-route="stok">Stok</a>
-      <a href="#/kas" data-route="kas">Kas masuk <span class="count" id="count-unmatched"></span></a>
-      <a href="#/brief" data-route="brief">Brief pagi</a>
-      <a href="#/aturan" data-route="aturan">Aturan</a>
+
+    <nav class="side-nav" aria-label="Halaman">
+      <p class="nav-label">Kerja</p>
+      <a href="#/meja" data-route="meja"><span>Meja kerja</span><span class="count" id="count-approvals"></span></a>
+      <a href="#/percakapan" data-route="percakapan"><span>Percakapan</span></a>
+      <a href="#/order" data-route="order"><span>Order</span></a>
+      <a href="#/stok" data-route="stok"><span>Stok</span></a>
+      <p class="nav-label">Uang</p>
+      <a href="#/piutang" data-route="piutang"><span>Piutang</span></a>
+      <a href="#/kas" data-route="kas"><span>Kas masuk</span><span class="count" id="count-unmatched"></span></a>
+      <p class="nav-label">Kendali</p>
+      <a href="#/brief" data-route="brief"><span>Brief pagi</span></a>
+      <a href="#/aturan" data-route="aturan"><span>Aturan</span></a>
     </nav>
-  </header>
 
-  <main id="main" tabindex="-1">
-    <p class="state-msg">Memuat Niagara…</p>
-  </main>
+    <section class="sim-card" aria-labelledby="sim-title">
+      <p class="sim-title" id="sim-title">Waktu simulasi</p>
+      <p class="sim-clock" id="clock" aria-live="polite">memuat</p>
+      <button type="button" class="btn btn-block" id="advance">Maju 1 hari</button>
+      <p class="sim-model" id="mode"></p>
+    </section>
 
-  <dialog id="drawer" class="drawer" aria-labelledby="drawer-title">
-    <div class="drawer-head">
-      <h2 id="drawer-title">Detail</h2>
-      <button type="button" class="btn btn-quiet" id="drawer-close">Tutup</button>
+    <div class="side-user">
+      <span class="avatar" id="user-initials" aria-hidden="true"></span>
+      <div class="side-user-text">
+        <span class="side-user-name" id="who"></span>
+        <span class="side-user-role" id="role"></span>
+      </div>
     </div>
-    <div id="drawer-body" class="drawer-body"></div>
+    <div class="side-actions">
+      <button type="button" class="btn btn-ghost btn-small" id="theme">Tema terang</button>
+      <button type="button" class="btn btn-ghost btn-small" id="logout">Keluar</button>
+    </div>
+  </aside>
+
+  <div class="content">
+    <main id="main" tabindex="-1">
+      <p class="state-msg">Memuat Niagara…</p>
+    </main>
+    <footer class="foot">
+      <span>Niagara, prototipe untuk GTNIC 2026. Pelanggan, produk, dan transaksi di sini adalah data simulasi.</span>
+      <button type="button" class="btn btn-ghost btn-small" id="reset" hidden>Ulang data simulasi</button>
+    </footer>
+  </div>
+
+  <dialog id="sheet" class="sheet" aria-labelledby="sheet-title">
+    <div class="sheet-head">
+      <p class="sheet-crumb" id="sheet-crumb"></p>
+      <h2 id="sheet-title" class="sr-only">Detail</h2>
+      <button type="button" class="icon-btn" id="sheet-close" aria-label="Tutup panel">
+        <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path d="M5 5l10 10M15 5L5 15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div id="sheet-body" class="sheet-body"></div>
   </dialog>
 
-  <dialog id="confirm" class="confirm" aria-labelledby="confirm-title">
+  <dialog id="modal" class="modal" aria-labelledby="modal-title">
+    <h2 id="modal-title"></h2>
+    <div id="modal-body"></div>
+  </dialog>
+
+  <dialog id="confirm" class="modal" aria-labelledby="confirm-title">
     <form method="dialog">
       <h2 id="confirm-title">Konfirmasi</h2>
       <p id="confirm-text"></p>
       <div class="row-actions">
         <button type="submit" value="cancel" class="btn">Batal</button>
-        <button type="submit" value="ok" class="btn btn-danger" id="confirm-ok">Ya, lanjutkan</button>
+        <button type="submit" value="ok" class="btn btn-primary" id="confirm-ok">Ya, lanjutkan</button>
       </div>
     </form>
   </dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-
-  <footer class="foot">
-    <span>Niagara, prototipe untuk GTNIC 2026. Data pelanggan, produk, dan transaksi di sini adalah data simulasi.</span>
-    <button type="button" class="btn btn-quiet" id="reset" hidden>Ulang data simulasi</button>
-  </footer>
 </body>
 </html>

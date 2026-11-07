@@ -149,8 +149,10 @@ def run_dict(r: AgentRun, steps: bool = True) -> dict:
 
 
 @app.get("/api/state")
-def state() -> dict:
+def state(request: Request) -> dict:
+    role = user_of(request)["role"]
     with db.session_scope() as s:
+        mine = sum(1 for (kind,) in s.query(Approval.kind).filter_by(status="PENDING") if auth.can_decide(role, kind))
         pending_events = s.query(Event).filter(Event.status == "PENDING").count()
         return {
             "now": clock.now(s).isoformat(),
@@ -160,7 +162,7 @@ def state() -> dict:
             "llm_status": get_llm().status(),
             "pending_events": pending_events,
             "dead_events": s.query(Event).filter(Event.status == "DEAD").count(),
-            "approvals_pending": s.query(Approval).filter_by(status="PENDING").count(),
+            "approvals_pending": mine,
             "unmatched_payments": s.query(BankTransaction).filter_by(status="UNMATCHED").count(),
             "bank_feed_waiting": len((s.get(KV, "bank_feed").value if s.get(KV, "bank_feed") else [])),
         }
@@ -763,4 +765,5 @@ def sim_unknown(body: UnknownMessage) -> dict:
 
 @app.get("/")
 def index() -> FileResponse:
-    return FileResponse(STATIC / "index.html")
+    # the shell must revalidate, otherwise a browser keeps pointing at old ?v= asset URLs after a release
+    return FileResponse(STATIC / "index.html", headers={"Cache-Control": "no-cache"})

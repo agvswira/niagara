@@ -1,0 +1,63 @@
+# Niagara design direction
+
+Design Read: an operations console for a distributor's order admin, AR staff and supervisor, used all day; a calm
+dark console in the spirit of modern approval dashboards (reference: a dark finance approval tool the team
+liked), with Niagara's own colour and motif. Dial ENERGY 2 / RHYTHM 2 / MOTION 2.
+
+## Identity
+
+- **Name and motif.** Niagara is a waterfall: work flows down from the customer's chat, through the agents, to a
+  decision. The motif is the **flow rail**, a thin vertical line with nodes that connects steps. It appears
+  wherever work moves through stages: the agent chain on an order, the trace of one agent run, the chat side
+  panel. It is never used as decoration elsewhere.
+- **Accent.** One deep blue-green (teal), the colour of falling water. Used for the primary action on a screen,
+  the active nav item, the flow rail, and Niagara's own chat bubbles. Nowhere else.
+- **Status colours** are functional, not palette: amber = waiting on a person, red = blocked or failed,
+  green = done. They appear only as tinted pills, bars and icons, always with a text label.
+
+## Palette
+
+| Token | Dark (default) | Light | Use |
+|---|---|---|---|
+| `--bg` | #0B0E10 | #F3F5F6 | page |
+| `--surface` | #12171A | #FFFFFF | panels |
+| `--surface-2` | #182024 | #F0F3F4 | hover, inner blocks, incoming bubbles |
+| `--line` | #232C31 | #DDE3E6 | dividers (decorative, no contrast duty) |
+| `--field` | #5E6E78 | #7F8E96 | input and button borders (3:1 non-text) |
+| `--ink` | #E6EDEF | #10171A | text |
+| `--muted` | #8D9AA2 | #59666D | secondary text (min 5.3:1 on surfaces) |
+| `--accent` | #2FC2B0 | #0A7F73 | primary buttons, rail, active nav |
+| `--accent-ink` | #5CD4C5 | #08695F | accent text and links |
+| `--bubble-out` | #10322F | #DDF2EF | Niagara's chat bubbles |
+
+Contrast was checked with the antislop contrast script; every text pairing passes 4.5:1, borders pass 3:1.
+
+## Type
+
+- **IBM Plex Sans** for everything: it was built for industrial documentation, reads well for hours, and has
+  tabular figures so rupiah columns line up.
+- **IBM Plex Mono** only for codes people copy or match: order, invoice and SKU numbers.
+- Section labels are sentence case at 12px semibold, not wide-tracked capitals.
+
+## Composition
+
+- **Shell:** a left sidebar because there are nine destinations and people switch between them all day; it also
+  carries the simulation clock and the signed-in role, which every screen depends on. On phones it becomes a
+  menu sheet.
+- **Meja kerja** is built around one decision: what needs a person now. A three-part summary of real counts,
+  then the decision queue as a table, then agent activity. Opening a row slides in a side sheet with the reason,
+  the rule checks, the agent chain and the action buttons, so the list stays in view.
+- **Percakapan** borrows the shape people already know from chat apps (contact list, bubbles, composer at the
+  bottom) without copying any one app's colours, icons or wallpaper. It is labelled "Simulator chat".
+- **Numbers shown are real.** Every count and rupiah value comes from the API. No invented deltas or trends.
+- Radii: 6px controls, 10px panels, 999px only for status pills and avatars.
+
+## Motion
+
+Purposeful only: the side sheet slides in from the right (keeps the list as context), toasts rise from the
+bottom, rows get a hover tint. Everything stops under `prefers-reduced-motion`.
+
+## What we do not do
+
+No gradients, glow, glass, background patterns, emoji, stock avatars or photos of people (initials only),
+fake statistics, or a copy of WhatsApp or the reference product.
