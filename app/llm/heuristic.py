@@ -168,6 +168,10 @@ def _date_phrase(t: str, today: date) -> tuple[int | None, str | None]:
     return days, phrase
 
 
+def days_from_phrase(text: str, today: date) -> int | None:
+    return _date_phrase(_normalize(text), today)[0]
+
+
 def parse_delivery(t: str, today: date) -> tuple[DeliveryRequest | None, str]:
     """Returns the requested delivery day and the text with that phrase removed."""
     m = DELIVERY_RE.search(t) or DELIVERY_AFTER_RE.search(t)

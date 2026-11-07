@@ -100,6 +100,16 @@ def test_personal_data_is_masked_before_it_reaches_the_provider():
     assert "indomie goreng 2 dus" in p.last_text
 
 
+def test_calendar_maths_comes_from_code_not_the_llm():
+    from app.llm.heuristic import days_from_phrase
+
+    saturday = date(2026, 11, 7)
+    assert days_from_phrase("jumat", saturday) == 6
+    assert days_from_phrase("kirim kamis depan", date(2026, 11, 9)) == 10
+    assert days_from_phrase("tgl 12", saturday) == 5
+    assert days_from_phrase("secepatnya", saturday) is None
+
+
 def test_heuristic_choice_has_no_providers():
     svc = LLMService("heuristic")
     assert svc.mode == "heuristic" and svc.status() == []

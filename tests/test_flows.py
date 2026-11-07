@@ -240,6 +240,23 @@ def test_confident_llm_guess_on_ambiguous_item_still_asks_the_customer():
     assert last_order(8).status == "NEEDS_CLARIFICATION"
 
 
+def test_text_claimed_as_proof_by_llm_is_treated_as_a_claim():
+    from app.llm.providers import Provider
+
+    class CallsItProof(Provider):
+        name = "keliru"
+
+        def generate(self, system, text, schema, media_path=None, kind="text"):
+            return schema.model_validate({"intent": "bukti_bayar", "payment_proof": {"amount": 500000}})
+
+    set_llm(LLMService(providers=[CallsItProof()]))
+    say(1, "sudah tf ya")
+    from app.models import PaymentProof
+    with db.session_scope() as s:
+        assert s.query(PaymentProof).count() == 0
+    assert "kirim foto bukti" in replies(1)[-1]
+
+
 @pytest.mark.parametrize("text,expected", [
     ("indomie goreng 2 dus, aqua tgg 3 dus", [("indomie goreng", 2, "dus"), ("aqua tgg", 3, "dus")]),
     ("bimoli 2 liter 5, sunlight x3", [("bimoli 2 liter", 5, None), ("sunlight", 3, None)]),

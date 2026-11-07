@@ -117,7 +117,9 @@ def on_reply(s: Session, ev) -> None:
             reply(s, customer, templates.handoff(customer.owner_name))
             return
         amount = promise.get("amount") or int(outstanding * (promise.get("amount_pct") or 100) / 100)
-        days = promise.get("days_from_today")
+        from app.agents.intake import resolve_days
+
+        days = resolve_days(s, promise.get("date_text"), promise.get("days_from_today"))
         days = 3 if days is None else max(0, days)
         due = today + timedelta(days=days)
         tracing.step("think", "Janji bayar terbaca", {"tanggal": due.isoformat(), "nominal": amount,

@@ -98,6 +98,17 @@ def plan(state: IntakeState, config) -> IntakeState:
             tasks.append(intent)
     if len(tasks) > 1 and "lainnya" in tasks:
         tasks.remove("lainnya")
+    msg = _session(config).get(Message, state["message_id"])
+    from app.llm.heuristic import STATUS_RE, _normalize
+
+    if "tanya_status" not in tasks and STATUS_RE.search(_normalize(msg.text or "")):
+        # A plain status question is easy to spot; do not let the model drop it from a busy message.
+        tasks.append("tanya_status")
+    if "bukti_bayar" in tasks and (msg.kind != "image" or u.payment_proof is None):
+        # A proof is a photo. "Sudah tf ya" in plain text is only a claim, whatever the model called it.
+        tracing.step("policy", "Tidak ada foto, dianggap klaim bayar, bukan bukti", {"jenis_pesan": msg.kind})
+        tasks = ["klaim_bayar" if t == "bukti_bayar" else t for t in tasks]
+        tasks = list(dict.fromkeys(tasks))
     if "bukti_bayar" in tasks and "klaim_bayar" in tasks:
         tasks.remove("klaim_bayar")
     if len(tasks) > 1:
@@ -195,11 +206,25 @@ def build_lines(state: IntakeState, config) -> IntakeState:
     return {"drafts": drafts}
 
 
+def resolve_days(s: Session, phrase: str | None, llm_days: int | None) -> int | None:
+    """The LLM reads the phrase; the calendar maths is done here. LLMs often miscount weekdays."""
+    from app.llm.heuristic import days_from_phrase
+
+    computed = days_from_phrase(phrase or "", clock.today(s))
+    if computed is not None and llm_days is not None and computed != llm_days:
+        tracing.step("policy", "Hitungan tanggal dari LLM dikoreksi",
+                     {"ungkapan": phrase, "versi_llm": llm_days, "versi_kalender": computed})
+    return computed if computed is not None else llm_days
+
+
 def apply_delivery_request(s: Session, order: SalesOrder, u) -> None:
     req = u.requested_delivery
-    if req is None or req.days_from_today is None:
+    if req is None:
         return
-    order.requested_delivery = clock.today(s) + timedelta(days=max(0, req.days_from_today))
+    days = resolve_days(s, req.date_text, req.days_from_today)
+    if days is None:
+        return
+    order.requested_delivery = clock.today(s) + timedelta(days=max(0, days))
     order.requested_not_before = req.not_before
     tracing.step("think", "Pelanggan minta waktu kirim tertentu",
                  {"ungkapan": req.date_text, "tanggal": order.requested_delivery.isoformat(),
