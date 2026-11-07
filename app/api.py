@@ -56,7 +56,11 @@ async def require_login(request: Request, call_next):
             if user is None:
                 return JSONResponse({"detail": "Silakan masuk dulu."}, status_code=401)
             request.state.user = {"username": user.username, "name": user.display_name, "role": user.role}
-    return await call_next(request)
+    response = await call_next(request)
+    if path.startswith("/static/"):
+        # revalidate with the ETag on every load (a cheap 304), so a browser never pairs new HTML with stale JS or CSS
+        response.headers["Cache-Control"] = "no-cache"
+    return response
 
 
 def user_of(request: Request) -> dict:
