@@ -28,7 +28,6 @@ class Settings:
     # Only for reasoning models such as gpt-oss; "low" cuts latency and token use. Leave empty for others.
     compat_reasoning_effort: str = os.getenv("OPENAI_COMPAT_REASONING_EFFORT", "")
     llm_timeout_seconds: float = float(os.getenv("LLM_TIMEOUT_SECONDS", "30"))
-    telegram_bot_token: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
     company_name: str = os.getenv("COMPANY_NAME", "CV Maju Sejahtera Distribusi")
     # shown in payment requests; the default is clearly a simulation account, set the real one before going live
     payment_account: str = os.getenv("PAYMENT_ACCOUNT", "")

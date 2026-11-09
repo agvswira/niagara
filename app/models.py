@@ -31,7 +31,7 @@ class CustomerContact(Base):
     __tablename__ = "customer_contacts"
     id: Mapped[int] = mapped_column(primary_key=True)
     customer_id: Mapped[int] = mapped_column(ForeignKey("customers.id"))
-    channel: Mapped[str] = mapped_column(String(20))  # simulator / telegram / whatsapp
+    channel: Mapped[str] = mapped_column(String(20))  # simulator / whatsapp
     handle: Mapped[str] = mapped_column(String(80))
     customer: Mapped[Customer] = relationship(back_populates="contacts")
     __table_args__ = (UniqueConstraint("channel", "handle"),)

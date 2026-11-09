@@ -1,6 +1,5 @@
 import csv
 import io
-import os
 import threading
 import uuid
 from contextlib import asynccontextmanager
@@ -15,7 +14,7 @@ from app import demo, auth, clock, db, events, onboarding, sim
 from app.agents.supervisor import build_brief
 from app.config import settings
 from app.llm.client import get_llm
-from app.models import (KV, AgentRun, AgentStep, Approval, BankTransaction, Conversation, Customer, CustomerContact,
+from app.models import (KV, AgentRun, AgentStep, Approval, BankTransaction, Conversation, Customer,
                         Claim, Event, Invoice, Message, Policy, Product, ProductUom, PromiseToPay, SalesOrder,
                         SalesOrderLine, Stock, User)
 from app.policy import DEFAULT_POLICIES
@@ -46,7 +45,7 @@ app = FastAPI(title="Niagara", docs_url="/api/docs", lifespan=lifespan)
 app.mount("/media", StaticFiles(directory=settings.media_dir), name="media")
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
-PUBLIC_PATHS = {"/api/auth/login", "/api/auth/me", "/api/channels/telegram/webhook", "/api/docs", "/openapi.json"}
+PUBLIC_PATHS = {"/api/auth/login", "/api/auth/me", "/api/docs", "/openapi.json"}
 
 
 @app.middleware("http")
@@ -598,34 +597,6 @@ def reset(request: Request) -> dict:
     for f in settings.media_dir.glob("*"):
         f.unlink(missing_ok=True)
     demo.run_opening_scenarios()
-    return {"ok": True}
-
-
-@app.post("/api/channels/telegram/webhook")
-async def telegram_webhook(request: Request) -> dict:
-    """Links a Telegram chat to a customer with '/start <id>', then treats its messages like WhatsApp."""
-    expected = os.getenv("TELEGRAM_WEBHOOK_SECRET")
-    if expected and request.headers.get("X-Telegram-Bot-Api-Secret-Token") != expected:
-        raise HTTPException(403, "Webhook tidak dikenal")
-    update = await request.json()
-    msg = update.get("message") or {}
-    chat_id = str((msg.get("chat") or {}).get("id", ""))
-    text = msg.get("text") or msg.get("caption") or ""
-    if not chat_id:
-        return {"ok": True}
-    with db.session_scope() as s:
-        contact = s.query(CustomerContact).filter_by(channel="telegram", handle=chat_id).first()
-        if text.startswith("/start"):
-            parts = text.split()
-            if len(parts) == 2 and parts[1].isdigit() and s.get(Customer, int(parts[1])):
-                if contact is None:
-                    s.add(CustomerContact(customer_id=int(parts[1]), channel="telegram", handle=chat_id))
-                return {"ok": True}
-        if contact is None:
-            onboarding.inbound_from_unknown(s, "telegram", chat_id, text)
-        else:
-            sim.inbound(s, contact.customer_id, text)
-    drain_bg()
     return {"ok": True}
 
 

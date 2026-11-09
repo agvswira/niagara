@@ -39,7 +39,7 @@ jadwal pagi ──► Penagihan ──schedule.brief──► Supervisor ◄─�
 - **Belajar dari koreksi.** Jawaban klarifikasi pelanggan dan koreksi admin disimpan sebagai alias khusus pelanggan. Alias yang dikonfirmasi tiga pelanggan berbeda naik jadi alias global.
 - **Data pribadi disamarkan sebelum keluar.** Di mode Gemini, nomor telepon, email, NIK, nomor rekening, serta nama toko dan pemilik diganti penanda (`[TELEPON]`, `[NAMA]`, dan seterusnya) sebelum teks dikirim ke LLM. Jejak agen hanya mencatat jumlah yang disamarkan, bukan nilainya. Foto dan pesan suara belum bisa disamarkan; itu tercatat di batasan.
 - **Login dan peran.** Semua API dan foto pelanggan butuh login. Versi pertama memakai satu akun supervisor yang memutuskan semuanya, supaya demo berfokus pada kerja agen. Pembagian peran sudah dibangun dan bisa diaktifkan dengan `NIAGARA_ROLE_ACCOUNTS=1`: admin order memutuskan soal pesanan dan pesan pelanggan, staf AR soal pembayaran, janji bayar, dan eskalasi, supervisor semuanya termasuk kredit, diskon, aturan, dan level otonomi. Server menolak keputusan di luar peran, bukan hanya menyembunyikannya. Keputusan dicatat atas nama pengguna yang login. Kata sandi disimpan sebagai hash PBKDF2, cookie sesi ditandatangani HMAC, dan login dikunci 5 menit setelah 5 kali gagal.
-- Batasan lain: jam tenang penagihan, maksimal satu pesan tagih per hari, idempotency key pada pembuatan order, audit log sebelum dan sesudah untuk setiap perubahan, secret token opsional untuk webhook Telegram.
+- Batasan lain: jam tenang penagihan, maksimal satu pesan tagih per hari, idempotency key pada pembuatan order, dan audit log sebelum dan sesudah untuk setiap perubahan.
 
 ## Menjalankan secara lokal
 
@@ -156,7 +156,7 @@ tests/         tes alur end-to-end
 
 ## Batasan saat ini
 
-- WhatsApp disimulasikan di dashboard. Kanal nyata yang sudah tersedia adalah bot Telegram (`/api/channels/telegram/webhook`); adapter WhatsApp Cloud API belum dibuat.
+- WhatsApp disimulasikan di dashboard. Semua pesan keluar lewat satu fungsi (`app/channels.py`), jadi menyambungkan WhatsApp Cloud API cukup mengubah file itu; adapternya belum dibuat.
 - Mutasi bank berasal dari feed simulasi atau unggahan CSV, belum dari API bank.
 - Gudang (pick, pack) dan pajak (e-Faktur) di luar cakupan.
 - Penyamaran data pribadi hanya berlaku untuk teks. Foto (bukti transfer, nota) dan pesan suara dikirim apa adanya ke Gemini.
