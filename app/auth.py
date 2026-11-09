@@ -49,7 +49,7 @@ def seed_users(s: Session) -> None:
 
     Role separation (admin order, AR staff) is fully built; NIAGARA_ROLE_ACCOUNTS=1 also creates those accounts.
     """
-    password = os.getenv("NIAGARA_DEMO_PASSWORD", "niagara-demo")
+    password = os.getenv("NIAGARA_DEMO_PASSWORD") or "niagara-demo"  # an empty value must not mean an empty password
     with_roles = os.getenv("NIAGARA_ROLE_ACCOUNTS", "") in ("1", "true", "yes")
     for username, name, role in DEMO_USERS:
         if role != "supervisor" and not with_roles:
