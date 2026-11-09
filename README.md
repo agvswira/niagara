@@ -156,3 +156,4 @@ tests/         tes alur end-to-end
 - Barang salah kirim (bukan kurang atau rusak) dan permintaan retur barang yang tidak cacat masih ditangani admin secara manual.
 - Klaim tunai bergantung pada konfirmasi staf AR; belum ada rekap setoran harian per sales.
 - Semua data pelanggan, transaksi, dan harga adalah data simulasi. Nama merek di katalog hanya contoh barang yang umum dijual distributor.
+- Halaman Percakapan sengaja dibuat mirip WhatsApp dan menyebut dirinya simulator; ini bukan aplikasi WhatsApp. Foto profil delapan kontak di sana dibuat dengan Figma AI dan menggambarkan orang fiktif, bukan foto orang sungguhan.

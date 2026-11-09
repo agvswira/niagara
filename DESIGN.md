@@ -49,8 +49,10 @@ Contrast was checked with the antislop contrast script; every text pairing passe
 - **Percakapan** is the one screen that deliberately looks like WhatsApp Desktop (layout and colours taken from a
   community Figma recreation), because the team wants viewers to picture the real channel at a glance. It says it is
   a simulator in three places: the list heading, the chat subtitle, and a pinned note in the thread where WhatsApp
-  shows its encryption notice. No WhatsApp logo, icons, wallpaper art, or photos are copied; contacts use a plain
-  silhouette as the default profile photo. Greys were nudged so every text pairing still passes 4.5:1.
+  shows its encryption notice. No WhatsApp logo, icons, wallpaper art, or photos are copied. Eight contacts have
+  profile photos generated with Figma AI (fictional people, not stock photos of real ones, so no real face is tied to
+  a made-up debt); the rest use a plain silhouette, as WhatsApp does for contacts without a photo. Greys were nudged
+  so every text pairing still passes 4.5:1.
 - **Numbers shown are real.** Every count and rupiah value comes from the API. No invented deltas or trends.
 - Radii: 6px controls, 10px panels, 999px only for status pills and avatars.
 
@@ -61,6 +63,7 @@ bottom, rows get a hover tint. Everything stops under `prefers-reduced-motion`.
 
 ## What we do not do
 
-No gradients, glow, glass, background patterns, emoji, stock avatars or photos of people (initials, or the
-silhouette in the chat simulator), fake statistics, or a copy of the reference product. The chat simulator mimics
+No gradients, glow, glass, background patterns, emoji, stock avatars or photos of real people (initials in the
+console; AI portraits of fictional people or a silhouette in the chat simulator), fake statistics, or a copy of the
+reference product. The chat simulator mimics
 WhatsApp on purpose and always labels itself as a simulator.

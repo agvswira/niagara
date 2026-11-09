@@ -55,8 +55,19 @@ function icon(name, size) {
   return s;
 }
 
-// default profile photo for contacts without a picture, as chat apps show it
-function waAvatar(label) {
+// AI-generated portraits of fictional shop owners; other contacts keep the default silhouette
+const AVATAR = {
+  "Toko Sinar Jaya": "sinar_jaya", "Grosir Pak Slamet": "grosir_pak_slamet", "Toko Cahaya Baru": "cahaya_baru",
+  "Toko Makmur Sentosa": "makmur_sentosa", "Toko Damai": "damai", "Toko Kencana": "kencana",
+  "Toko Baru Buka": "baru_buka", "Toko Bintang": "bintang",
+};
+
+// profile photo when one exists, otherwise the default silhouette chat apps show
+function waAvatar(name) {
+  if (AVATAR[name]) {
+    return el("img", { class: "wa-avatar", src: `/static/avatars/${AVATAR[name]}.jpg`, alt: "", "aria-hidden": "true",
+      width: "256", height: "256", loading: "lazy", decoding: "async" });
+  }
   const s = document.createElementNS(SVGNS, "svg");
   s.setAttribute("viewBox", "0 0 212 212");
   s.setAttribute("class", "wa-avatar");
@@ -65,7 +76,6 @@ function waAvatar(label) {
   s.innerHTML = '<circle cx="106" cy="106" r="106" class="wa-avatar-bg"/>'
     + '<circle cx="106" cy="84" r="40" class="wa-avatar-fg"/>'
     + '<path d="M38 186c8-38 36-60 68-60s60 22 68 60a106 106 0 0 1-136 0z" class="wa-avatar-fg"/>';
-  if (label) s.setAttribute("data-label", label);
   return s;
 }
 
@@ -757,7 +767,7 @@ async function viewChat() {
     contacts.append(el("button", { type: "button", class: "contact", "aria-current": x.id === app.customerId ? "true" : null,
       dataset: { name: x.name.toLowerCase(), owes: x.outstanding > 0 ? "1" : "0", unverified: x.verified === false ? "1" : "0" },
       onclick: () => pick(x.id) },
-      waAvatar(),
+      waAvatar(x.name),
       el("span", { class: "contact-body" },
         el("span", { class: "contact-top" }, el("span", { class: "contact-name" }, x.name),
           el("span", { class: "contact-time" }, last ? jam(last.at) : "")),
@@ -881,7 +891,7 @@ async function viewChat() {
   const pane = el("section", { class: "chat-pane", "aria-labelledby": "chat-title" },
     el("div", { class: "chat-head" },
       el("button", { type: "button", class: "icon-btn back-btn", "aria-label": "Kembali ke daftar chat", onclick: () => { location.hash = "#/percakapan"; } }, icon("back")),
-      waAvatar(),
+      waAvatar(c.name),
       el("div", { class: "chat-head-text" }, el("h2", { id: "chat-title", class: "chat-head-name" }, c.name),
         el("p", { class: "chat-head-sub" }, `${c.owner} · ${c.area} · simulator chat`)),
       el("button", { type: "button", class: "icon-btn info-btn", "aria-label": "Info kontak", title: "Info kontak",
@@ -898,7 +908,7 @@ async function viewChat() {
       el("button", { type: "button", class: "icon-btn", "aria-label": "Tutup info kontak", onclick: () => { app.chatInfo = false; render(false); } },
         icon("cross", 20)), "Info kontak"),
     el("div", { class: "chat-info-hero" },
-      waAvatar(),
+      waAvatar(c.name),
       el("p", { class: "name" }, c.name), el("p", { class: "sub" }, `${c.owner} · ${c.area}, tier ${c.tier}`)),
     customerInfo(data));
 

@@ -389,7 +389,7 @@ body.signed-out .content { margin-left: 0; }
 }
 .contact:hover { background: var(--wa-hover); }
 .contact[aria-current="true"] { background: var(--wa-active); }
-.wa-avatar { display: block; flex: none; width: 49px; height: 49px; border-radius: 50%; }
+.wa-avatar { display: block; flex: none; width: 49px; height: 49px; border-radius: 50%; object-fit: cover; background: var(--wa-av-bg); }
 .wa-avatar-bg { fill: var(--wa-av-bg); }
 .wa-avatar-fg { fill: var(--wa-av-fg); }
 .contact-body { display: grid; gap: 2px; min-width: 0; align-self: stretch; align-content: center; border-bottom: 1px solid var(--wa-line); }
