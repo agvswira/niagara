@@ -757,6 +757,6 @@ def index() -> FileResponse:
 
 
 @app.get("/demo")
-def demo() -> RedirectResponse:
+def demo_redirect() -> RedirectResponse:
     # old landing links pointed here; the demo always goes through the login form
     return RedirectResponse("/app", status_code=303)

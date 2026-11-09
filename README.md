@@ -140,7 +140,7 @@ Demo publik berjalan di VPS dengan Docker Compose (`deploy/vps/`): aplikasi di b
 docker compose --env-file .env -f deploy/vps/docker-compose.yml up -d --build
 ```
 
-Untuk memperbarui: `git pull`, lalu jalankan perintah yang sama.
+Untuk memperbarui: `git pull`, lalu jalankan perintah yang sama. Perintah compose lain juga butuh `--env-file .env`, misalnya untuk melihat log: `docker compose --env-file .env -f deploy/vps/docker-compose.yml logs -f niagara`.
 
 Repo ini juga punya `render.yaml` untuk Render (New, Blueprint, pilih repo ini, lalu isi key yang sama).
 

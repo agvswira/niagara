@@ -94,3 +94,22 @@ def test_redact_masks_contact_and_identity_data():
         assert secret not in masked
     assert found == {"email": 1, "telepon": 1, "nik": 1, "rekening": 1, "nama": 1}
     assert redact("indomie goreng 2 dus Rp248.000", [])[1] == {}
+
+
+def test_reset_reruns_the_opening_scenarios(client, monkeypatch, tmp_path):
+    from dataclasses import replace
+
+    import app.api as api_module
+
+    # reset deletes uploaded media; point it at a temp folder so the test never touches the real one
+    monkeypatch.setattr(api_module, "settings", replace(api_module.settings, media_dir=tmp_path))
+    login(client, "supervisor")
+    assert client.post("/api/sim/reset").status_code == 200
+    with db.session_scope() as s:
+        assert s.query(Approval).count() > 0  # the opening scenarios leave decisions on the desk
+
+
+def test_demo_link_redirects_to_the_app(client):
+    r = client.get("/demo", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == "/app"
+    assert "set-cookie" not in r.headers
