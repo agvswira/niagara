@@ -3,7 +3,6 @@
     <source media="(prefers-color-scheme: dark)" srcset="docs/readme/logo-gelap.svg">
     <img width="120" src="docs/readme/logo.svg" alt="Logo Niagara: huruf n dengan maskot bunga hijau Agen Kas masuk">
   </picture>
-  <br><br>
   <h1>Niagara</h1>
   <p><strong>Tim agen AI untuk alur order sampai kas di distributor B2B. Toko tetap memesan dan membayar lewat chat; lima agen membaca pesannya, mengecek stok dan kredit, menagih, lalu mencocokkan transfer. Manusia cukup memutuskan yang memang perlu diputuskan manusia.</strong></p>
   <p>
