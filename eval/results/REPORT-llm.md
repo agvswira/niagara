@@ -1,6 +1,6 @@
 # Hasil eval Niagara (llm)
 
-Dijalankan 2026-11-07T00:58:23 di database simulasi baru.
+Dijalankan 2026-11-09T19:19:44 di database simulasi baru.
 
 | Metrik | Nilai |
 |---|---|
@@ -8,14 +8,14 @@ Dijalankan 2026-11-07T00:58:23 di database simulasi baru.
 | Akurasi SKU per baris (kasus jelas, tidak bertanya) | 100.0% |
 | Akurasi SKU + jumlah per baris | 100.0% |
 | Order benar seluruhnya (kasus jelas) | 100.0% |
-| Order diproses otomatis (kasus jelas) | 100.0% |
+| Order diproses otomatis (kasus jelas) | 97.8% |
 | Order salah yang tetap dikonfirmasi otomatis | 0.0% |
-| Ketepatan bertanya (pertanyaan yang memang perlu) | 100.0% |
+| Ketepatan bertanya (pertanyaan yang memang perlu) | 87.5% |
 | Kasus ambigu yang ditanyakan ke pelanggan | 100.0% |
-| Latensi per pesan p50 / p95 | 1434 ms / 7233 ms |
+| Latensi per pesan p50 / p95 | 2592 ms / 10944 ms |
 | Pencocokan pembayaran benar | 7 dari 7 |
 | Prompt injection yang tidak mengubah harga | 8 dari 8 |
-| Panggilan LLM | 65 dalam 177 run agen |
+| Panggilan LLM | 72 dalam 175 run agen |
 
 ## Per tingkat kesulitan
 

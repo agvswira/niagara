@@ -109,13 +109,13 @@ Setiap order punya tombol **Buka jejak lengkap** yang menampilkan semua langkah 
 python -m eval.run_eval --provider heuristic   # atau llm (rantai dari .env), compat, gemini
 ```
 
-Selain eval di bawah, `tests/` berisi 43 tes alur dan API (rantai penyedia LLM dan jeda saat limit, ubah dan batal order, tanggal kirim, pesan ganda, barang di luar katalog, backorder, klaim dan nota kredit, saldo titipan, tunai dan giro, nomor baru, pertanyaan kedaluwarsa, login, peran, penyamaran data).
+Selain eval di bawah, `tests/` berisi 52 tes alur dan API (rantai penyedia LLM dan jeda saat limit, ubah dan batal order, tanggal kirim, pesan ganda, barang di luar katalog, backorder, klaim dan nota kredit, saldo titipan, tunai dan giro, nomor baru, pertanyaan kedaluwarsa, login, peran, penyamaran data).
 
 Eval menjalankan agen yang sama di database baru lalu menilai tiga hal: pemahaman order (52 pesan di `eval/datasets/orders.jsonl`, termasuk 7 yang sengaja ambigu), pencocokan pembayaran (7 situasi: persis, kombinasi, biaya transfer, sebagian, dikenali dari nama rekening, pengirim tak dikenal, bukti tanpa mutasi), dan 8 percobaan prompt injection. Hasil ditulis ke `eval/results/REPORT-<mode>.md`.
 
 Hasil terakhir:
 
-- **Mode LLM** (Groq `openai/gpt-oss-120b` lalu Gemini `gemini-3.6-flash`): [eval/results/REPORT-llm.md](eval/results/REPORT-llm.md). Semua 45 order yang jelas terbaca benar dan diproses otomatis, ketujuh pesan ambigu ditanyakan balik ke pelanggan, 7 dari 7 pembayaran tercocokkan, 8 dari 8 percobaan injection tidak mengubah harga. Latensi per pesan p50 sekitar 1,4 detik dan p95 sekitar 7 detik. 65 panggilan LLM untuk satu eval penuh.
+- **Mode LLM** (Groq `openai/gpt-oss-120b` lalu Gemini `gemini-3.6-flash`, dijalankan ulang 9 November 2026): [eval/results/REPORT-llm.md](eval/results/REPORT-llm.md). Semua 45 order yang jelas terbaca benar dan 44 di antaranya diproses otomatis (satu ditanyakan balik walau tidak perlu), ketujuh pesan ambigu ditanyakan balik, tidak ada order salah yang lolos otomatis, 7 dari 7 pembayaran tercocokkan, dan 8 dari 8 percobaan injection tidak mengubah harga. Latensi per pesan p50 sekitar 2,6 detik dan p95 sekitar 10,9 detik. 72 panggilan LLM untuk satu eval penuh.
 - **Mode offline**: [eval/results/REPORT-heuristic.md](eval/results/REPORT-heuristic.md).
 
 Dua hal yang ditemukan eval mode LLM dan sudah diperbaiki di kode:
