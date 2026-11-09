@@ -198,6 +198,20 @@ Eval menjalankan agen yang sama di database baru lalu menilai pemahaman order (5
 
 Dataset ditulis tim, dan dua perbaikan mode LLM berasal dari dataset yang sama. Angka ini menunjukkan alur dan pengamannya bekerja, belum membuktikan akurasi pada chat distributor sungguhan. Pengukuran yang sah butuh set uji terpisah dari percakapan asli.
 
+### Estimasi efisiensi operasional
+
+Waktu admin yang dihemat per hari, dengan $N$ jumlah kejadian per hari, $p$ porsi yang selesai otomatis, dan $t$ waktu manual per kejadian, untuk order ($o$) dan mutasi transfer ($m$):
+
+$$H = N_o \, p_o \, t_o + N_m \, p_m \, t_m$$
+
+| Komponen | Asumsi skenario | Hasil |
+|---|---|---|
+| Order lewat chat | $N_o$ = 150, $p_o$ = 70%, $t_o$ = 4 menit | 420 menit |
+| Pencocokan transfer | $N_m$ = 60, $p_m$ = 80%, $t_m$ = 3 menit | 144 menit |
+| Total $H$ | | 564 menit, sekitar 9,4 jam kerja per hari |
+
+Angka $N$, $p$, dan $t$ adalah asumsi skenario, bukan data pelanggan; $p_o$ sengaja lebih rendah dari hasil eval agar estimasi tetap aman. Order yang tidak lolos otomatis pun lebih cepat diperiksa karena draft dan alasannya sudah disiapkan.
+
 ## 9. Installation / Local Run
 
 Butuh Python 3.14.
@@ -279,15 +293,7 @@ Untuk mencoba sendiri, pilih toko lain dan kirim sebagai pemiliknya. Contoh pesa
 
 Tombol **Maju 1 hari** memajukan jam simulasi: order terkirim menjadi invoice, Agen Penagihan mengirim pengingat, dan Supervisor menyusun brief pagi. Setelah order dikonfirmasi, coba juga `kurangi aqua jadi 1 dus` atau `batal ya mas`.
 
-## 12. Team Members
-
-| Nama | Peran |
-|---|---|
-| [kmagus104](https://github.com/kmagus104) | [isi nama lengkap dan peran] |
-| [natakrisnu05](https://github.com/natakrisnu05) | [isi nama lengkap dan peran] |
-| [gussubhiksa](https://github.com/gussubhiksa) | [isi nama lengkap dan peran] |
-
-## 13. Third-party Resources / Credits
+## 12. Third-party Resources / Credits
 
 - **Library:** FastAPI, Uvicorn, SQLAlchemy, Pydantic, LangGraph, RapidFuzz, google-genai, HTTPX, Pillow, python-multipart, python-dotenv, pytest.
 - **Model dan layanan AI:** Groq API (`openai/gpt-oss-120b`), Google Gemini API.
@@ -298,7 +304,7 @@ Tombol **Maju 1 hari** memajukan jam simulasi: order terkirim menjadi invoice, A
 - **Ikon, maskot, dan logo** digambar tim sebagai SVG di dalam kode.
 - **Badge** di README dari shields.io.
 
-## 14. Known Limitations
+## 13. Known Limitations
 
 - **WhatsApp disimulasikan** di web. Semua pesan keluar lewat satu fungsi ([`channels.py`](app/channels.py)), tempat adapter WhatsApp Cloud API kelak dipasang.
 - **Mutasi bank** berasal dari feed simulasi atau unggahan CSV, belum dari API bank.
@@ -308,6 +314,14 @@ Tombol **Maju 1 hari** memajukan jam simulasi: order terkirim menjadi invoice, A
 - **Batas pemakaian per pengunjung** disimpan di memori server, jadi ter-reset saat aplikasi restart.
 - **Gudang** (pick, pack) dan pajak (e-Faktur) di luar cakupan.
 - **Semua data adalah simulasi.**
+
+## 14. Future Development
+
+- **Kanal nyata:** adapter WhatsApp Cloud API resmi di fungsi kanal yang sudah ada, dengan template pesan yang disetujui Meta.
+- **Integrasi bank dan ERP:** menarik mutasi lewat API bank dan menyinkronkan order, invoice, serta stok ke ERP distributor.
+- **Pilot dengan satu distributor:** mengukur waktu yang dihemat dengan data nyata, lalu menyetel ambang keyakinan dan skor bayar per pelanggan.
+- **Privasi untuk gambar dan suara:** OCR dan transkripsi lokal sebelum isinya dikirim ke LLM.
+- **Produk komersial:** layanan multi-tenant berlangganan per jumlah toko aktif, dengan aturan dan katalog terpisah per distributor.
 
 ## AI & Technology Disclosure
 
@@ -326,6 +340,6 @@ Tombol **Maju 1 hari** memajukan jam simulasi: order terkirim menjadi invoice, A
 | AI Coding Assistant | Claude Code (Anthropic) dipakai sebagai asisten pengembangan untuk menulis dan merapikan kode, merancang antarmuka, dan membantu pengujian. Setiap perubahan diarahkan, ditinjau, dan diuji tim |
 | Existing before competition | Tidak ada. Repository dimulai dari commit pertama `8e780dc` (6 November 2026) |
 | Development for competition | Seluruh produk: kode, data simulasi, dataset uji, desain, maskot, dan logo |
-| Third-party Assets / Credits | Font Satoshi dan IBM Plex Mono; foto profil simulator dari Figma AI; lihat bagian 13 |
+| Third-party Assets / Credits | Font Satoshi dan IBM Plex Mono; foto profil simulator dari Figma AI; lihat bagian 12 |
 
 > Kami menyatakan bahwa informasi di atas benar dan lengkap. Kami bertanggung jawab atas penggunaan teknologi, source code, data, library, API, model AI, dan aset yang digunakan pada produk.
