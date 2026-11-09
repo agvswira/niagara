@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from app import auth, clock, db, events, onboarding, sim
+from app import demo, auth, clock, db, events, onboarding, sim
 from app.agents.supervisor import build_brief
 from app.config import settings
 from app.llm.client import get_llm
@@ -31,11 +31,14 @@ STATIC = Path(__file__).parent / "static"
 async def lifespan(_app: FastAPI):
     db.init_db()
     with db.session_scope() as s:
-        if s.query(Customer).count() == 0:
+        fresh = s.query(Customer).count() == 0
+        if fresh:
             from app.seed import seed
             seed(s)
         auth.seed_users(s)
     events.drain()
+    if fresh:
+        demo.run_opening_scenarios()
     yield
 
 
@@ -199,7 +202,7 @@ def conversation(cid: int) -> dict:
         conv = s.query(Conversation).filter_by(customer_id=cid).first()
         msgs = s.query(Message).filter_by(conversation_id=conv.id).order_by(Message.id).all() if conv else []
         order = (s.query(SalesOrder).filter_by(customer_id=cid, is_history=False).order_by(SalesOrder.id.desc()).first())
-        runs = (s.query(AgentRun).filter_by(customer_id=cid).order_by(AgentRun.id.desc()).limit(12).all())
+        runs = (s.query(AgentRun).filter_by(customer_id=cid).order_by(AgentRun.id.desc()).limit(60).all())
         basket = catalog.usual_basket_data(s, cid)
         return {
             "customer": {"id": c.id, "name": c.name, "owner": c.owner_name, "tier": c.tier, "area": c.area,
@@ -594,6 +597,7 @@ def reset(request: Request) -> dict:
         reset_and_seed()
     for f in settings.media_dir.glob("*"):
         f.unlink(missing_ok=True)
+    demo.run_opening_scenarios()
     return {"ok": True}
 
 

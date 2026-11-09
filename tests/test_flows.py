@@ -289,3 +289,34 @@ def test_morning_reminders_do_not_share_one_timestamp():
     with db.session_scope() as s:
         stamps = {m.created_at for m in s.query(Message).filter_by(direction="out", intent="collection")}
         assert len(stamps) > 1
+
+
+def test_opening_scenarios_show_every_kind_of_agent_work():
+    from app import demo
+    from app.models import AgentRun
+
+    demo.run_opening_scenarios()
+    with db.session_scope() as s:
+        agents = {r.agent for r in s.query(AgentRun)}
+        statuses = {o.status for o in s.query(SalesOrder).filter_by(is_history=False)}
+        kinds = {a.kind for a in s.query(Approval).filter_by(status="PENDING")}
+        matched = s.query(BankTransaction).filter_by(status="MATCHED").count()
+    assert {"intake", "fulfillment", "credit", "cash_application"} <= agents
+    assert {"CONFIRMED", "BACKORDERED", "PENDING_REVIEW"} <= statuses
+    assert {"unknown_item", "order_review", "discount_note", "pelanggan_baru"} <= kinds
+    assert matched == 1
+
+
+def test_good_payers_are_not_reminded_before_the_due_date():
+    from app.tools.credit import snapshot
+
+    with db.session_scope() as s:
+        sim.advance_days(s, 1)
+    events.drain()
+    with db.session_scope() as s:
+        reminded = {c.customer_id for c in s.query(Conversation).join(Message, Message.conversation_id == Conversation.id)
+                    .filter(Message.intent == "collection")}
+        from app.models import Customer
+        for cid in reminded:
+            c = s.get(Customer, cid)
+            assert snapshot(s, cid)["max_overdue_days"] > 0 or c.payment_score < 0.9, c.name

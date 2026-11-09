@@ -67,9 +67,17 @@ Niagara tidak terikat ke satu penyedia. `LLM_CHAIN` menentukan urutan yang dicob
 
 Penyedia yang mengembalikan HTTP 429 (limit) dijeda sesuai `Retry-After` atau 60 detik, jadi pesan berikutnya langsung ke penyedia selanjutnya tanpa menunggu. Hanya Intake Agent yang memanggil LLM: satu panggilan per pesan, ditambah satu bila nama barang ambigu. Agen lain tidak memakai kuota.
 
-Rantai aktif, jumlah panggilan per penyedia hari ini, dan penyedia yang sedang dijeda terlihat di `/api/state`; ringkasannya tampil di pojok kanan atas dashboard. Untuk hemat kuota, jalankan tes dan eval offline (`--provider heuristic`) dan simpan kuota untuk demo dan penjurian.
+Rantai aktif, jumlah panggilan per penyedia hari ini, dan penyedia yang sedang dijeda terlihat di `/api/state`. Untuk hemat kuota, jalankan tes dan eval offline (`--provider heuristic`) dan simpan kuota untuk demo dan penjurian.
 
 ## Mencoba skenario demo
+
+Saat database dibuat pertama kali atau di-reset dari dashboard, Niagara menjalankan skenario pembuka lewat agen yang sama (`app/demo.py`): order yang langsung dikonfirmasi, nama barang ambigu yang ditanyakan balik lalu dijawab, stok habis dengan barang pengganti, backorder, permintaan hari kirim, percobaan prompt injection, order yang ditahan kredit lalu dilepas setelah transfer cocok, barang di luar katalog, draft untuk pelanggan level otonomi 0, dan pesan dari nomor baru. Skenario ini memakai parser offline supaya reset cepat, hasilnya sama setiap kali, dan tidak memakai kuota LLM. Setiap langkahnya tercatat di jejak agen seperti pesan biasa.
+
+Di halaman Percakapan, kerja agen untuk setiap pesan tampil sebagai kartu "Di balik layar" di antara bubble chat: maskot agen, ringkasan kerjanya, dan tautan ke jejak lengkap. Kartu ini bisa disembunyikan dengan tombol "Kerja agen tampil".
+
+Agen penagihan hanya mengirim pengingat sebelum jatuh tempo ke pelanggan dengan skor bayar di bawah `collection.pre_due_below_score` (bawaan 0,9). Tagihan yang sudah telat selalu ditagih.
+
+Skenario di bawah bisa dicoba sendiri dengan mengetik di simulator:
 
 Di halaman **Percakapan**, pilih toko lalu kirim pesan sebagai pemiliknya (ada daftar contoh pesan di bawah kolom ketik):
 

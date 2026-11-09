@@ -72,6 +72,10 @@ def daily_dunning(s: Session) -> dict:
             skipped.append(f"{customer.name}: ada janji bayar aktif")
             continue
         stage = max(st for _, st in items)
+        if stage == 0 and customer.payment_score >= policy.get(s, "collection.pre_due_below_score"):
+            # good payers are not nagged before the due date; reminders start once something is actually late
+            skipped.append(f"{customer.name}: belum jatuh tempo, riwayat bayar baik")
+            continue
         fresh = [inv for inv, st in items if st > inv.collection_stage
                  or inv.last_reminder_at is None
                  or (st >= 1 and (now - inv.last_reminder_at).days >= REMIND_EVERY_DAYS)]

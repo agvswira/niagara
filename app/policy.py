@@ -15,6 +15,7 @@ DEFAULT_POLICIES: dict[str, tuple[Any, str]] = {
     "substitution.max_price_diff_pct": (10, "Pengganti hanya boleh dari kategori sama dengan selisih harga maksimal N persen."),
     "messaging.quiet_hours": ([21, 7], "Tidak mengirim pesan penagihan di antara jam ini."),
     "collection.max_msgs_per_day": (1, "Maksimal pesan penagihan per pelanggan per hari."),
+    "collection.pre_due_below_score": (0.9, "Pengingat sebelum jatuh tempo hanya untuk pelanggan dengan skor bayar di bawah nilai ini; tagihan yang sudah telat selalu ditagih."),
     "conversation.question_ttl_hours": (24, "Jawaban atas pertanyaan agen hanya dianggap jawaban dalam N jam."),
     "conversation.close_unanswered_hours": (48, "Order yang menunggu jawaban pelanggan lebih dari N jam ditutup otomatis."),
     "claims.max_days_after_delivery": (3, "Keluhan kurang atau rusak diterima sampai N hari setelah barang dikirim."),

@@ -233,10 +233,6 @@ async function refreshState() {
     app.state = s;
     $("#clock").textContent = tgl(s.now, true);
     $("#company").textContent = s.company;
-    const cooling = (s.llm_status || []).some((p) => p.cooling_seconds);
-    $("#mode").textContent = s.llm_mode === "llm"
-      ? `Model ${s.llm_label}${cooling ? ". Sebagian penyedia dijeda karena batas pemakaian." : ""}`
-      : "Mode offline: parser aturan, tanpa LLM";
     $("#count-approvals").textContent = s.approvals_pending || "";
     $("#count-unmatched").textContent = s.unmatched_payments || "";
     return s;
@@ -925,11 +921,35 @@ async function viewChat() {
   // ---- thread ----
   const thread = el("div", { class: "thread", "aria-label": `Percakapan dengan ${c.name}`, tabindex: "0" },
     el("p", { class: "wa-note" }, SIM_NOTE));
+  // one timeline: customer message, then the agent runs it triggered, then Niagara's reply
+  const showWork = !app.hideAgentWork;
+  const timeline = data.messages.map((m) => ({ t: m.at, rank: m.direction === "in" ? 0 : 2, id: m.id, m }));
+  if (showWork) data.runs.forEach((r) => timeline.push({ t: r.started_at, rank: 1, id: r.id, r }));
+  timeline.sort((x, y) => (x.t < y.t ? -1 : x.t > y.t ? 1 : x.rank - y.rank || x.id - y.id));
   let lastDay = "";
   let lastDir = "";
-  data.messages.forEach((m) => {
-    const day = m.at.slice(0, 10);
-    if (day !== lastDay) { thread.append(el("p", { class: "day-sep" }, tgl(m.at))); lastDay = day; lastDir = ""; }
+  let work = null;
+  timeline.forEach((e) => {
+    const day = e.t.slice(0, 10);
+    if (day !== lastDay) { thread.append(el("p", { class: "day-sep" }, tgl(e.t))); lastDay = day; lastDir = ""; work = null; }
+    if (e.r) {
+      if (!work) {
+        work = el("div", { class: "agent-work", role: "group", "aria-label": "Kerja agen Niagara untuk pesan ini" },
+          el("p", { class: "agent-work-head" }, "Di balik layar: kerja agen Niagara", el("span", {}, "tidak terlihat oleh pelanggan")));
+        thread.append(work);
+        lastDir = "";
+      }
+      const r = e.r;
+      work.append(el("button", { type: "button", class: "agent-step", onclick: () => openRun(r.id),
+        title: `Buka jejak Agen ${AGENT[r.agent] || r.agent}` },
+        mascot(r.agent, 24),
+        el("span", { class: "agent-step-text" }, el("b", {}, `Agen ${AGENT[r.agent] || r.agent}`), " ",
+          humanDates(r.summary) || (r.status === "FAILED" ? "gagal, lihat jejaknya" : `${r.steps.length} langkah`)),
+        r.status === "FAILED" ? el("span", { class: "pill block" }, "Gagal") : el("span", { class: "agent-step-time" }, jam(r.started_at))));
+      return;
+    }
+    work = null;
+    const m = e.m;
     const out = m.direction === "out";
     const tail = (out ? "out" : "in") !== lastDir;
     lastDir = out ? "out" : "in";
@@ -1021,6 +1041,10 @@ async function viewChat() {
       waAvatar(c.name),
       el("div", { class: "chat-head-text" }, el("h2", { id: "chat-title", class: "chat-head-name" }, c.name),
         el("p", { class: "chat-head-sub" }, `${c.owner} · ${c.area} · simulator chat`)),
+      el("button", { type: "button", class: "work-toggle", "aria-pressed": String(!app.hideAgentWork),
+        title: "Tampilkan atau sembunyikan kerja agen di antara pesan",
+        onclick: () => { app.hideAgentWork = !app.hideAgentWork; render(false); } },
+        mascot("intake", 18), app.hideAgentWork ? "Tampilkan kerja agen" : "Kerja agen tampil"),
       el("button", { type: "button", class: "icon-btn info-btn", "aria-label": "Info kontak", title: "Info kontak",
         "aria-pressed": String(Boolean(app.chatInfo)),
         onclick: () => {
