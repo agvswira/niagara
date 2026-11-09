@@ -45,8 +45,15 @@ def verify_password(password: str, stored: str) -> bool:
 
 
 def seed_users(s: Session) -> None:
+    """The first release ships one supervisor account so a demo stays about the agents.
+
+    Role separation (admin order, AR staff) is fully built; NIAGARA_ROLE_ACCOUNTS=1 also creates those accounts.
+    """
     password = os.getenv("NIAGARA_DEMO_PASSWORD", "niagara-demo")
+    with_roles = os.getenv("NIAGARA_ROLE_ACCOUNTS", "") in ("1", "true", "yes")
     for username, name, role in DEMO_USERS:
+        if role != "supervisor" and not with_roles:
+            continue
         if not s.query(User).filter_by(username=username).first():
             s.add(User(username=username, display_name=name, role=role, password_hash=hash_password(password)))
     s.flush()

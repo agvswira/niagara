@@ -25,6 +25,7 @@ def client(monkeypatch):
 
     # Run agent work inline so no background thread outlives the test and touches the next test's database.
     monkeypatch.setattr(api_module, "drain_bg", events.drain)
+    monkeypatch.setenv("NIAGARA_ROLE_ACCOUNTS", "1")  # these tests check role separation, so create all accounts
     set_llm(LLMService("heuristic"))
     reset_and_seed(datetime(2026, 11, 9, 8, 0))
     auth._failures.clear()

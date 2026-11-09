@@ -38,7 +38,7 @@ jadwal pagi ──► Penagihan ──schedule.brief──► Supervisor ◄─�
 - **Tangga otonomi per pelanggan.** Level 0 (shadow): semua draft dicek admin. Level 1: otomatis bila confidence di atas 0,95. Level 2: otomatis di atas 0,85. Koreksi admin pada order otomatis menurunkan level; riwayat yang akurat menaikkannya.
 - **Belajar dari koreksi.** Jawaban klarifikasi pelanggan dan koreksi admin disimpan sebagai alias khusus pelanggan. Alias yang dikonfirmasi tiga pelanggan berbeda naik jadi alias global.
 - **Data pribadi disamarkan sebelum keluar.** Di mode Gemini, nomor telepon, email, NIK, nomor rekening, serta nama toko dan pemilik diganti penanda (`[TELEPON]`, `[NAMA]`, dan seterusnya) sebelum teks dikirim ke LLM. Jejak agen hanya mencatat jumlah yang disamarkan, bukan nilainya. Foto dan pesan suara belum bisa disamarkan; itu tercatat di batasan.
-- **Login dan peran.** Semua API dan foto pelanggan butuh login. Admin order memutuskan soal pesanan dan pesan pelanggan, staf AR soal pembayaran, janji bayar, dan eskalasi, supervisor semuanya termasuk kredit, diskon, aturan, dan level otonomi. Keputusan dicatat atas nama pengguna yang login. Kata sandi disimpan sebagai hash PBKDF2, cookie sesi ditandatangani HMAC, dan login dikunci 5 menit setelah 5 kali gagal.
+- **Login dan peran.** Semua API dan foto pelanggan butuh login. Versi pertama memakai satu akun supervisor yang memutuskan semuanya, supaya demo berfokus pada kerja agen. Pembagian peran sudah dibangun dan bisa diaktifkan dengan `NIAGARA_ROLE_ACCOUNTS=1`: admin order memutuskan soal pesanan dan pesan pelanggan, staf AR soal pembayaran, janji bayar, dan eskalasi, supervisor semuanya termasuk kredit, diskon, aturan, dan level otonomi. Server menolak keputusan di luar peran, bukan hanya menyembunyikannya. Keputusan dicatat atas nama pengguna yang login. Kata sandi disimpan sebagai hash PBKDF2, cookie sesi ditandatangani HMAC, dan login dikunci 5 menit setelah 5 kali gagal.
 - Batasan lain: jam tenang penagihan, maksimal satu pesan tagih per hari, idempotency key pada pembuatan order, audit log sebelum dan sesudah untuk setiap perubahan, secret token opsional untuk webhook Telegram.
 
 ## Menjalankan secara lokal
@@ -53,7 +53,7 @@ uvicorn app.api:app --port 8000
 
 Buka http://localhost:8000. Database SQLite dan data simulasi (40 produk, 25 toko, riwayat 8 minggu) dibuat otomatis saat pertama jalan.
 
-Akun demo: `admin` (admin order), `ar` (staf AR), dan `supervisor`. Kata sandinya diambil dari `NIAGARA_DEMO_PASSWORD` di `.env`; nilai bawaannya ada di `.env.example`. Ganti sebelum dipasang di alamat publik.
+Akun demo: `supervisor`. Dengan `NIAGARA_ROLE_ACCOUNTS=1` di `.env`, akun `admin` (admin order) dan `ar` (staf AR) ikut dibuat saat data di-reset. Kata sandinya diambil dari `NIAGARA_DEMO_PASSWORD` di `.env`; nilai bawaannya ada di `.env.example`. Ganti sebelum dipasang di alamat publik.
 
 Di Windows, letakkan virtualenv di path yang pendek (misalnya `C:\venvs\niagara`). Beberapa paket memuat DLL yang gagal bila path folder terlalu panjang.
 
@@ -93,7 +93,7 @@ Di halaman **Percakapan**, pilih toko lalu kirim pesan sebagai pemiliknya (ada d
 10. **Tanggal kirim.** `indomie goreng 2 dus, kirim jumat ya` dijadwalkan sesuai permintaan bila Jumat termasuk hari rute toko itu. Bila bukan, agen menyebut alasannya dan tanggal terdekat.
 11. **Beberapa permintaan sekaligus.** `sudah tf ya, sekalian order indomie goreng 2 dus. pesanan kemarin kapan dikirim?` Agen menyusun rencana tiga langkah (terlihat di jejak) dan menjawab ketiganya.
 12. **Barang di luar katalog.** `obat nyamuk bakar 3 dus` langsung masuk Meja kerja admin. Barang yang mirip produk lain (misalnya `sabun colek ekonomi`) ditanyakan dulu dengan pilihan "Bukan salah satunya".
-13. Masuk sebagai `ar` lalu sebagai `admin`: Meja kerja masing-masing hanya menampilkan keputusan untuk perannya, dan halaman Aturan hanya bisa diubah supervisor.
+13. **Pembagian peran (opsional).** Isi `NIAGARA_ROLE_ACCOUNTS=1`, reset data, lalu masuk sebagai `ar` dan `admin`: Meja kerja masing-masing hanya menampilkan keputusan untuk perannya, dan halaman Aturan hanya bisa diubah supervisor.
 14. **Backorder dan kiriman susulan.** Toko Lestari tidak menerima barang pengganti. Kirim `minyak fortune 2 liter 2 dus` (stoknya nol): order dicatat sebagai "Menunggu stok". Di halaman **Stok**, catat Fortune masuk 5 dus. Agen langsung membuat kiriman susulan dan mengabari toko.
 15. **Kurang atau rusak saat diterima.** Setelah order terkirim (tekan Maju 1 hari sampai statusnya "Terkirim, ditagih"), pelanggan menulis `indomie goreng kurang 1 dus` atau `aqua tgg 2 dus pecah`. Sopir juga bisa melapor lewat formulir **Laporan pengiriman** di detail order, termasuk "ditolak toko". Klaim masuk Meja kerja; bila disetujui, nota kredit memotong tagihan. Barang kurang atau ditolak kembali ke stok, barang rusak dihapuskan.
 16. **Saldo titipan.** Bila pelanggan membayar lebih dari tagihannya, kelebihannya disimpan sebagai saldo dan otomatis memotong invoice berikutnya. Nota kredit atas tagihan yang sudah lunas juga masuk saldo.

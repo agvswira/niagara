@@ -655,7 +655,7 @@ async function viewDesk() {
 
   return el("div", {},
     pageHead("Meja kerja", "Hal yang tidak bisa diputuskan agen sendiri. Buka satu baris untuk melihat alasannya, aturan yang diperiksa, dan rantai agennya.",
-      ROLE_SCOPE[app.user.role], null, { live: true, meta: app.state ? `${longDate(app.state.now)} · jam simulasi ${jam(app.state.now)}` : null }),
+      app.user.role === "supervisor" ? null : ROLE_SCOPE[app.user.role], null, { live: true, meta: app.state ? `${longDate(app.state.now)} · jam simulasi ${jam(app.state.now)}` : null }),
     el("div", { class: "desk" },
       el("div", { class: "desk-main" }, kpis,
         el("section", { class: "panel", "aria-labelledby": "q-title" },
@@ -1425,7 +1425,7 @@ function showLogin() {
   } },
     el("span", { class: "wordmark" }, "Niagara"),
     el("div", {}, el("h1", { id: "login-title" }, "Masuk ke meja kerja"),
-      el("p", { class: "muted", style: "margin-top:6px" }, "Akun demo: admin (admin order), ar (staf AR), dan supervisor. Kata sandi demo tercantum di README repo.")),
+      el("p", { class: "muted", style: "margin-top:6px" }, "Akun demo: supervisor. Kata sandi demo tercantum di README repo.")),
     el("div", { class: "field" }, el("label", { for: "login-user" }, "Nama pengguna"), user),
     el("div", { class: "field" }, el("label", { for: "login-pass" }, "Kata sandi"), pass),
     error, submit);
