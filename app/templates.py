@@ -12,6 +12,26 @@ def tanggal(d: date) -> str:
     return f"{HARI[d.weekday()]} {d.day} {BULAN[d.month - 1]}"
 
 
+def nota(iso_or_date) -> str:
+    """Shop owners remember an invoice by its date, not its code: "nota 6 Okt"."""
+    d = date.fromisoformat(iso_or_date) if isinstance(iso_or_date, str) else iso_or_date
+    return f"{d.day} {BULAN[d.month - 1]}"
+
+
+def order_items(order, limit: int = 2) -> str:
+    """'3 dus Indomie Mi Soto' or '2 dus Indomie Goreng, 3 dus Aqua dan 1 barang lain'."""
+    rows = [f"{qty_text(ln.qty, ln.uom)} {ln.product.name}" for ln in order.lines if ln.product_id and ln.qty_base]
+    if not rows:
+        return f"pesanan {order.number}"
+    head = ", ".join(rows[:limit])
+    return head + (f" dan {len(rows) - limit} barang lain" if len(rows) > limit else "")
+
+
+def account_text() -> str:
+    from app.config import settings
+    return settings.payment_account or f"rekening {settings.company_name} (rekening simulasi)"
+
+
 def qty_text(qty: float, uom: str) -> str:
     q = int(qty) if float(qty).is_integer() else qty
     return f"{q} {uom}"
@@ -66,11 +86,35 @@ def substitution_offer(owner: str, offers: list[dict]) -> str:
             + "\n\nMau diganti? Balas YA atau TIDAK. Kalau tidak, yang ada kami kirim dulu dan sisanya menyusul saat stok masuk.")
 
 
-def hold_notice(owner: str, order, overdue: list[dict]) -> str:
-    rows = "\n".join(f"• {i['number']}  {rupiah(i['amount'])} (telat {i['days']} hari)" for i in overdue[:5])
-    return (f"{owner}, pesanan {order.number} ({rupiah(order.total)}) sudah kami terima. Pengirimannya kami tahan dulu"
-            f" karena masih ada tagihan yang lewat jatuh tempo:\n\n{rows}\n\nBegitu pembayaran masuk, pesanan langsung"
-            f" kami jadwalkan. Kalau sudah transfer, kirim foto buktinya di sini.")
+def hold_notice(owner: str, order, snap: dict, rules: list[str], minimum: int | None, credit_limit: int,
+                limit_days: int) -> str:
+    reasons = []
+    if "credit.max_overdue_days" in rules:
+        reasons.append(f"ada tagihan yang telat lebih dari {limit_days} hari")
+    if "credit.limit" in rules:
+        reasons.append(f"total tagihan sudah melewati batas kredit toko ({rupiah(credit_limit)})")
+    if "credit.broken_promises" in rules:
+        reasons.append("ada janji bayar yang belum ditepati")
+    why = " dan ".join(reasons) or "ada tagihan yang perlu diselesaikan dulu"
+    parts = [f"{owner}, pesanan {order_items(order)} ({rupiah(order.total)}) sudah kami terima."
+             f" Pengirimannya kami tahan dulu karena {why}."]
+    overdue = snap["overdue_invoices"]
+    if overdue:
+        rows = [f"• Nota {nota(i['issue_date'])}  {rupiah(i['amount'])}, telat {i['days']} hari" for i in overdue[:6]]
+        if len(overdue) > 6:
+            rows.append(f"• dan {len(overdue) - 6} nota lain")
+        total = sum(i["amount"] for i in overdue)
+        parts.append(f"Tagihan yang sudah lewat jatuh tempo, total *{rupiah(total)}*:\n" + "\n".join(rows))
+    else:
+        parts.append(f"Sisa tagihan saat ini *{rupiah(snap['outstanding'])}*.")
+    if minimum:
+        parts.append(f"Supaya pesanan ini bisa dikirim, mohon transfer minimal *{rupiah(minimum)}* ke {account_text()},"
+                     f" dimulai dari nota paling lama.")
+    else:
+        parts.append("Sales kami akan menghubungi untuk mengatur pembayarannya.")
+    parts.append("Kalau sudah transfer, kirim foto buktinya di sini. Begitu dana masuk, pesanan langsung kami jadwalkan.")
+    parts.append(f"Rujukan: {order.number}")
+    return "\n\n".join(parts)
 
 
 def pending_approval(owner: str, order) -> str:
@@ -115,24 +159,42 @@ def proof_received(owner: str, amount: int | None) -> str:
     return f"Terima kasih {owner}, bukti transfer{amt} sudah kami terima. Kami cocokkan dengan mutasi bank dulu, nanti kami kabari."
 
 
-def payment_applied(owner: str, amount: int, invoices: list[str], released: list[tuple[str, date | None]],
-                    balance_added: int = 0) -> str:
+def payment_applied(owner: str, amount: int, invoices: list[dict], released: list, balance_added: int = 0,
+                    outstanding_after: int | None = None) -> str:
+    """invoices: [{number, issue_date, paid_off, not_due}]; released: orders now scheduled."""
+    parts = [f"Terima kasih {owner}, pembayaran *{rupiah(amount)}* sudah masuk."]
     if invoices:
-        msg = f"Pembayaran {rupiah(amount)} sudah masuk dan kami catat untuk {', '.join(invoices)}. Terima kasih {owner}."
+        labels = []
+        for i in invoices:
+            note = [] if i["paid_off"] else ["sebagian"]
+            if i.get("not_due"):
+                note.append("belum jatuh tempo")
+            labels.append(nota(i["issue_date"]) + (f" ({', '.join(note)})" if note else ""))
+        listed = labels[0] if len(labels) == 1 else ", ".join(labels[:-1]) + f", dan {labels[-1]}"
+        parts.append(f"Kami pakai untuk {len(invoices)} nota: {listed}.")
     else:
-        msg = f"Pembayaran {rupiah(amount)} sudah masuk. Terima kasih {owner}."
-    if balance_added:
-        msg += (f"\n\nKelebihan {rupiah(balance_added)} kami simpan sebagai saldo titipan dan otomatis dipakai"
-                f" untuk tagihan berikutnya.")
-    for number, d in released:
-        msg += f"\n\nPesanan {number} sekarang kami jadwalkan kirim {tanggal(d)}." if d else f"\n\nPesanan {number} kami proses sekarang."
-    return msg
+        parts.append("Belum ada tagihan terbuka, jadi seluruhnya kami simpan sebagai saldo titipan.")
+    if outstanding_after is not None:
+        parts.append("Semua tagihan sekarang lunas." if outstanding_after <= 0
+                     else f"Sisa tagihan: *{rupiah(outstanding_after)}*.")
+    if balance_added and invoices:
+        parts.append(f"Kelebihan {rupiah(balance_added)} kami simpan sebagai saldo titipan dan otomatis dipakai"
+                     f" untuk tagihan berikutnya.")
+    for order in released:
+        when = f"kami jadwalkan kirim *{tanggal(order.delivery_date)}*" if order.delivery_date else "kami proses sekarang"
+        parts.append(f"Pesanan {order_items(order)} {when}.")
+    refs = [i["number"] for i in invoices] + [o.number for o in released]
+    if refs:
+        parts.append("Rujukan: " + ", ".join(refs))
+    return "\n\n".join(parts)
 
 
-def still_held(orders, outstanding: int, limit: int) -> str:
-    numbers = ", ".join(o.number for o in orders)
-    return (f"Pesanan {numbers} masih kami tahan: sisa tagihan {rupiah(outstanding)}, sedangkan batas kredit toko"
-            f" {rupiah(limit)}. Begitu sisa tagihan turun di bawah batas, pesanan langsung kami jadwalkan.")
+def still_held(orders, minimum: int | None) -> str:
+    items = "; ".join(order_items(o) for o in orders)
+    if minimum:
+        return (f"Pesanan {items} masih kami tahan. Supaya bisa dikirim, masih kurang *{rupiah(minimum)}*"
+                f" ke {account_text()}.")
+    return f"Pesanan {items} masih kami tahan. Sales kami akan menghubungi untuk mengatur pembayarannya."
 
 
 def proof_already_received(owner: str, amount: int) -> str:

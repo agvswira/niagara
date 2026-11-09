@@ -859,7 +859,13 @@ function customerInfo(data) {
   ];
 }
 
-const SIM_NOTE = "Ini simulator Niagara, bukan WhatsApp asli. Tampilannya sengaja dibuat mirip WhatsApp supaya alurnya mudah dibayangkan: Anda mengetik sebagai pemilik toko, dan balasan datang dari agen Niagara. Di lapangan, pesan yang sama akan masuk lewat nomor WhatsApp Business distributor.";
+// WhatsApp shows *text* as bold; the simulator renders it the same way
+function waText(text) {
+  return text.split(/(\*[^*\n]+\*)/g).filter(Boolean)
+    .map((part) => (/^\*[^*\n]+\*$/.test(part) ? el("b", {}, part.slice(1, -1)) : part));
+}
+
+const SIM_NOTE ="Ini simulator Niagara, bukan WhatsApp asli. Tampilannya sengaja dibuat mirip WhatsApp supaya alurnya mudah dibayangkan: Anda mengetik sebagai pemilik toko, dan balasan datang dari agen Niagara. Di lapangan, pesan yang sama akan masuk lewat nomor WhatsApp Business distributor.";
 const CHAT_FILTERS = [["semua", "Semua"], ["tagihan", "Ada tagihan"], ["baru", "Belum diverifikasi"]];
 
 async function viewChat() {
@@ -886,7 +892,7 @@ async function viewChat() {
   app.customers.forEach((x) => {
     const last = x.last_message;
     const fromNiagara = last && last.direction === "out";
-    const preview = x.verified === false && !last ? "Belum diverifikasi" : last ? last.text : `${x.area} · tier ${x.tier}`;
+    const preview = x.verified === false && !last ? "Belum diverifikasi" : last ? last.text.replaceAll("*", "") : `${x.area} · tier ${x.tier}`;
     contacts.append(el("button", { type: "button", class: "contact", "aria-current": x.id === app.customerId ? "true" : null,
       dataset: { name: x.name.toLowerCase(), owes: x.outstanding > 0 ? "1" : "0", unverified: x.verified === false ? "1" : "0" },
       onclick: () => pick(x.id) },
@@ -961,7 +967,7 @@ async function viewChat() {
       el("span", { class: "sr-only" }, out ? "Niagara: " : `${c.owner}: `),
       m.media_url && m.kind === "image" ? el("img", { src: m.media_url, alt: "Foto yang dikirim pelanggan", width: "300", height: "220", loading: "lazy" }) : null,
       m.kind === "audio" && m.media_url ? el("audio", { controls: true, src: m.media_url }) : null,
-      m.text || null,
+      m.text ? waText(m.text) : null,
       intent || spacer,
       el("span", { class: "bubble-meta" }, jam(m.at),
         out ? el("span", { class: "ticks", title: "Terkirim" }, icon("dtick", 16), el("span", { class: "sr-only" }, "terkirim")) : null)));

@@ -93,8 +93,14 @@ def hold(state: CreditState, config) -> CreditState:
     customer = s.get(Customer, order.customer_id)
     reasons = " ".join(state["decision"]["reasons"])
     set_order_status(s, order_id=order.id, status="ON_HOLD_CREDIT", actor="credit_agent", note=reasons)
-    overdue = state["snapshot"]["overdue_invoices"] or [{"number": "Total piutang", "amount": state["snapshot"]["outstanding"], "days": 0}]
-    reply(s, customer, templates.hold_notice(customer.owner_name, order, overdue), category="order")
+    snap = state["snapshot"]
+    minimum = credit_tools.release_amount(s, customer, order.total, snap)
+    tracing.step("think", "Menghitung pembayaran minimal agar order bisa dikirim",
+                 {"minimal": minimum, "aturan": state["decision"]["rules"],
+                  "cara": "nota telat di atas batas hari dan kelebihan dari limit kredit, dibayar dari nota paling lama"})
+    reply(s, customer, templates.hold_notice(customer.owner_name, order, snap, state["decision"]["rules"], minimum,
+                                             customer.credit_limit, policy.get(s, "credit.max_overdue_days")),
+          category="order")
     tracing.summarize(f"{order.number} ditahan: {reasons}")
     return {}
 

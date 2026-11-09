@@ -6,7 +6,7 @@ from langgraph.graph import END, START, StateGraph
 from sqlalchemy.orm import Session
 
 from app import events, templates, tracing
-from app.agents.common import reply, request_approval
+from app.agents.common import paid_invoice_rows, reply, request_approval
 from app.agents.credit import release_held_orders
 from app.models import BankTransaction, Customer, PaymentProof, SalesOrder
 from app.tools import credit as credit_tools
@@ -71,12 +71,13 @@ def post(state: CashState, config) -> CashState:
                      {"alasan": "Tidak ada tagihan terbuka yang tersisa. Saldo otomatis dipakai untuk invoice berikutnya."})
     released = release_held_orders(s, cid)
     customer = s.get(Customer, cid)
-    text = templates.payment_applied(customer.owner_name, tx.amount, res.data["invoices"],
-                                     [(o.number, o.delivery_date) for o in released], balance_added=p["unapplied"])
+    snap = credit_tools.snapshot(s, cid)
+    text = templates.payment_applied(customer.owner_name, tx.amount, paid_invoice_rows(s, res.data["invoices"]), released,
+                                     balance_added=p["unapplied"], outstanding_after=snap["outstanding"])
     still_held = s.query(SalesOrder).filter_by(customer_id=cid, status="ON_HOLD_CREDIT").all()
     if still_held:
-        snap = credit_tools.snapshot(s, cid)
-        text += "\n\n" + templates.still_held(still_held, snap["outstanding"], customer.credit_limit)
+        minimum = credit_tools.release_amount(s, customer, still_held[0].total, snap)
+        text += "\n\n" + templates.still_held(still_held, minimum)
         tracing.step("decision", "Order masih ditahan setelah pembayaran", {"order": [o.number for o in still_held],
                                                                              "sisa_piutang": snap["outstanding"]})
     reply(s, customer, text)

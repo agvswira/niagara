@@ -5,7 +5,7 @@ from datetime import timedelta
 from sqlalchemy.orm import Session
 
 from app import clock, events, policy, templates, tracing
-from app.agents.common import reply
+from app.agents.common import paid_invoice_rows, reply
 from app.agents.credit import confirm_order, unknown_item_notes
 from app.models import (KV, Approval, BankTransaction, Customer, Invoice, PromiseToPay, SalesOrder, SalesOrderLine,
                         Stock, Product)
@@ -236,5 +236,7 @@ def _manual_payment(s: Session, a: Approval) -> None:
         from app.agents.credit import release_held_orders
         released = release_held_orders(s, cid)
         customer = s.get(Customer, cid)
-        reply(s, customer, templates.payment_applied(customer.owner_name, tx.amount, [x["number"] for x in plan["allocations"]],
-                                                     [(o.number, o.delivery_date) for o in released]))
+        from app.tools.credit import snapshot
+        reply(s, customer, templates.payment_applied(customer.owner_name, tx.amount,
+                                                     paid_invoice_rows(s, [x["number"] for x in plan["allocations"]]),
+                                                     released, outstanding_after=snapshot(s, cid)["outstanding"]))

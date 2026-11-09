@@ -320,3 +320,17 @@ def test_good_payers_are_not_reminded_before_the_due_date():
         for cid in reminded:
             c = s.get(Customer, cid)
             assert snapshot(s, cid)["max_overdue_days"] > 0 or c.payment_score < 0.9, c.name
+
+
+def test_hold_message_says_how_much_to_pay_and_where():
+    say(6, "indomie soto 3 dus")
+    held = replies(6)[-1]
+    assert "total *Rp" in held and "minimal *Rp" in held and "rekening" in held and "Rujukan: SO-" in held
+    with db.session_scope() as s:
+        sim.customer_pays(s, 6, snapshot(s, 6)["outstanding"])
+    events.drain()
+    with db.session_scope() as s:
+        sim.import_feed(s)
+    events.drain()
+    paid = replies(6)[-1]
+    assert "Semua tagihan sekarang lunas" in paid and "kami jadwalkan kirim" in paid

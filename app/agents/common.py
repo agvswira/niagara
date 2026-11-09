@@ -3,7 +3,7 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 
 from app import clock, tracing
-from app.models import Approval, Customer, SalesOrder
+from app.models import Approval, Customer, Invoice, SalesOrder
 from app.tools.messaging import send_message
 
 OPEN_ORDER_STATES = ("RECEIVED", "NEEDS_CLARIFICATION", "PENDING_REVIEW", "MATCHED", "SUBSTITUTION_OFFERED",
@@ -38,3 +38,15 @@ def latest_open_order(s: Session, customer_id: int, states=OPEN_ORDER_STATES) ->
 
 def touch(s: Session, order: SalesOrder) -> None:
     order.updated_at: datetime = clock.now(s)
+
+
+def paid_invoice_rows(s: Session, numbers: list[str]) -> list[dict]:
+    """Invoices a payment went to, with what the customer needs to read the receipt: date, paid off, not yet due."""
+    today = clock.today(s)
+    rows = []
+    for number in numbers:
+        inv = s.query(Invoice).filter_by(number=number).first()
+        if inv:
+            rows.append({"number": number, "issue_date": inv.issue_date.isoformat(), "paid_off": inv.status == "PAID",
+                         "not_due": inv.due_date > today})
+    return rows

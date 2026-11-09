@@ -24,7 +24,8 @@ def snapshot(s: Session, customer_id: int) -> dict:
     return {
         "outstanding": outstanding,
         "overdue_amount": sum(i.amount - i.paid_amount for i in overdue),
-        "overdue_invoices": [{"number": i.number, "amount": i.amount - i.paid_amount, "days": (today - i.due_date).days}
+        "overdue_invoices": [{"number": i.number, "amount": i.amount - i.paid_amount, "days": (today - i.due_date).days,
+                              "issue_date": i.issue_date.isoformat()}
                              for i in sorted(overdue, key=lambda i: i.due_date)],
         "max_overdue_days": max_overdue,
         "avg_order_value": round(avg),
@@ -44,3 +45,17 @@ def evaluate(s: Session, customer: Customer, order_total: int, snap: dict) -> po
                                broken_promises=snap["broken_promises"])
     tracing.step("policy", f"Evaluasi kredit: {d.outcome}", d.to_dict(), ok=d.outcome == "ALLOW")
     return d
+
+
+def release_amount(s: Session, customer: Customer, order_total: int, snap: dict) -> int | None:
+    """Smallest payment that lets a held order through, assuming it pays the oldest invoices first.
+
+    Covers both hold rules: invoices late beyond the policy limit, and outstanding plus the order above the
+    credit limit. Returns None when paying alone is not enough (broken promises need a person).
+    """
+    if snap["broken_promises"] >= 2:
+        return None
+    limit_days = policy.get(s, "credit.max_overdue_days")
+    too_late = sum(i["amount"] for i in snap["overdue_invoices"] if i["days"] > limit_days)
+    over_limit = max(0, snap["outstanding"] + order_total - customer.credit_limit)
+    return max(too_late, over_limit)

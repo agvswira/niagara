@@ -30,6 +30,8 @@ class Settings:
     llm_timeout_seconds: float = float(os.getenv("LLM_TIMEOUT_SECONDS", "30"))
     telegram_bot_token: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
     company_name: str = os.getenv("COMPANY_NAME", "CV Maju Sejahtera Distribusi")
+    # shown in payment requests; the default is clearly a simulation account, set the real one before going live
+    payment_account: str = os.getenv("PAYMENT_ACCOUNT", "")
     media_dir: Path = ROOT / "media"
 
 
