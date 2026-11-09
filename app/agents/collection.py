@@ -82,8 +82,9 @@ def daily_dunning(s: Session) -> dict:
         ok = reply(s, customer, templates.collection_reminder(customer.owner_name, stage, rows), category="collection")
         if ok:
             sent += 1
+            sent_at = clock.now(s)
             for inv, st in items:
-                inv.collection_stage, inv.last_reminder_at = max(inv.collection_stage, st), now
+                inv.collection_stage, inv.last_reminder_at = max(inv.collection_stage, st), sent_at
             # the agent works through the list one shop at a time, so reminders do not all carry the same minute
             clock.advance(s, minutes=1 + cid % 3)
         if stage == 3:

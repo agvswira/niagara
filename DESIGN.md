@@ -1,8 +1,8 @@
 # Niagara design direction
 
 Design Read: an operations console for a distributor's order admin, AR staff and supervisor, used all day; a calm
-dark console in the spirit of modern approval dashboards (reference: a dark finance approval tool the team
-liked), with Niagara's own colour and motif. Dial ENERGY 2 / RHYTHM 2 / MOTION 2.
+light, airy console in the spirit of modern CRM dashboards (latest reference: a light sales dashboard the team
+liked; earlier a dark approval tool), with Niagara's own colour and motif. Dial ENERGY 2 / RHYTHM 2 / MOTION 2.
 
 ## Identity
 
@@ -17,24 +17,28 @@ liked), with Niagara's own colour and motif. Dial ENERGY 2 / RHYTHM 2 / MOTION 2
 
 ## Palette
 
-| Token | Dark (default) | Light | Use |
+| Token | Light (default) | Dark | Use |
 |---|---|---|---|
-| `--bg` | #0B0E10 | #F3F5F6 | page |
-| `--surface` | #12171A | #FFFFFF | panels |
-| `--surface-2` | #182024 | #F0F3F4 | hover, inner blocks, incoming bubbles |
-| `--line` | #232C31 | #DDE3E6 | dividers (decorative, no contrast duty) |
-| `--field` | #5E6E78 | #7F8E96 | input and button borders (3:1 non-text) |
-| `--ink` | #E6EDEF | #10171A | text |
-| `--muted` | #8D9AA2 | #59666D | secondary text (min 5.3:1 on surfaces) |
-| `--accent` | #2FC2B0 | #0A7F73 | primary buttons, rail, active nav |
-| `--accent-ink` | #5CD4C5 | #08695F | accent text and links |
+| `--bg` | #F5F6F8 | #0E1114 | page |
+| `--surface` | #FFFFFF | #15191D | panels and cards |
+| `--surface-2` | #F2F4F7 | #1B2025 | hover, inner blocks, chips |
+| `--line` | #E6E8EC | #262C32 | card borders and dividers (decorative, no contrast duty) |
+| `--field` | #858D9B | #5F6B75 | input borders (3:1 non-text) |
+| `--ink` | #101828 | #E7ECEF | text |
+| `--muted` | #5D6675 | #919CA5 | secondary text (min 5.2:1 on surfaces) |
+| `--accent` | #0A7F73 | #2FC2B0 | primary buttons, rail, active nav, brand mark |
+| `--accent-ink` | #08695F | #5CD4C5 | accent text and links |
+
+Light is the default because the people using it work in an office in daytime and the latest reference the team
+chose is light; dark stays complete and is one click away.
 
 Contrast was checked with the antislop contrast script; every text pairing passes 4.5:1, borders pass 3:1.
 
 ## Type
 
-- **IBM Plex Sans** for everything: it was built for industrial documentation, reads well for hours, and has
-  tabular figures so rupiah columns line up.
+- **Plus Jakarta Sans** for everything: drawn by Tokotype, an Indonesian foundry, for the city of Jakarta; geometric
+  and friendly like the reference, with tabular figures so rupiah columns line up. Big figures use 800 weight with
+  tight tracking; body stays at 400.
 - **IBM Plex Mono** only for codes people copy or match: order, invoice and SKU numbers.
 - Section labels are sentence case at 12px semibold, not wide-tracked capitals.
 
@@ -43,8 +47,9 @@ Contrast was checked with the antislop contrast script; every text pairing passe
 - **Shell:** a left sidebar because there are nine destinations and people switch between them all day; it also
   carries the simulation clock and the signed-in role, which every screen depends on. On phones it becomes a
   menu sheet.
-- **Meja kerja** is built around one decision: what needs a person now. A three-part summary of real counts,
-  then the decision queue as a table, then agent activity. Opening a row slides in a side sheet with the reason,
+- **Meja kerja** is built around one decision: what needs a person now. Three KPI cards of real counts, then the
+  decision queue as a table, and on the right an activity rail of real agent runs grouped by day (today's counts,
+  filters by work area, a timeline with the agent named on each entry, "show more" per day). Opening a row slides in a side sheet with the reason,
   the rule checks, the agent chain and the action buttons, so the list stays in view.
 - **Percakapan** is the one screen that deliberately looks like WhatsApp Desktop (layout and colours taken from a
   community Figma recreation), because the team wants viewers to picture the real channel at a glance. It says it is
@@ -54,7 +59,8 @@ Contrast was checked with the antislop contrast script; every text pairing passe
   a made-up debt); the rest use a plain silhouette, as WhatsApp does for contacts without a photo. Greys were nudged
   so every text pairing still passes 4.5:1.
 - **Numbers shown are real.** Every count and rupiah value comes from the API. No invented deltas or trends.
-- Radii: 6px controls, 10px panels, 999px only for status pills and avatars.
+- Radii: 10px controls, 16px cards and panels, 999px only for status pills, filters and avatars. Cards are flat
+  with a hairline border; only the side sheet, dialogs and toasts carry a shadow because they sit above the page.
 
 ## Motion
 

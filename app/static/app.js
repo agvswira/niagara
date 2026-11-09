@@ -274,9 +274,12 @@ function restoreUI(root, k) {
 }
 
 // ---------- shared pieces ----------
-function pageHead(title, lede, extra, actions) {
+function pageHead(title, lede, extra, actions, opts = {}) {
   return el("div", { class: "page-head" },
-    el("div", {}, el("h1", {}, title), lede ? el("p", { class: "lede" }, lede) : null,
+    el("div", {},
+      el("h1", {}, title, opts.live ? el("span", { class: "pill live", title: "Halaman ini diperbarui sendiri saat agen bekerja" }, "Langsung") : null),
+      opts.meta ? el("p", { class: "page-meta" }, opts.meta) : null,
+      lede ? el("p", { class: "lede" }, lede) : null,
       extra ? el("p", { class: "lede small" }, extra) : null),
     actions || null);
 }
@@ -343,7 +346,7 @@ function chain(runs, openIndex) {
       el("div", {},
         el("div", { class: "rail-head" }, el("span", { class: "rail-title" }, `Agen ${AGENT[r.agent] || r.agent}`),
           el("span", { class: "rail-meta" }, `${jam(r.started_at)}${r.llm_calls ? ` · ${r.llm_calls} panggilan LLM` : ""}`)),
-        el("p", { class: "rail-text" }, r.summary || (failed ? "Gagal, lihat langkah terakhir." : "Selesai.")),
+        el("p", { class: "rail-text" }, humanDates(r.summary) || (failed ? "Gagal, lihat langkah terakhir." : "Selesai.")),
         r.steps && r.steps.length ? el("details", { open: i === openIndex || null },
           el("summary", {}, `${r.steps.length} langkah`), stepList(r.steps)) : null));
   }));
@@ -450,7 +453,7 @@ async function openRun(id) {
         el("div", { class: "hero-top" }, el("div", {}, el("p", { class: "hero-title" }, `Agen ${AGENT[r.agent] || r.agent}`),
           el("p", { class: "hero-sub" }, `${tgl(r.started_at, true)} · ${r.steps.length} langkah${r.llm_calls ? ` · ${r.llm_calls} panggilan LLM` : ""}`)),
           el("span", { class: `pill ${r.status === "FAILED" ? "block" : "done"}` }, r.status === "FAILED" ? "Gagal" : "Selesai")),
-        r.summary ? el("p", {}, r.summary) : null)),
+        r.summary ? el("p", {}, humanDates(r.summary)) : null)),
       section("Langkah", stepList(r.steps)),
     ]);
   } catch (e) { $("#sheet-body").replaceChildren(sheetError(e)); }
@@ -473,12 +476,108 @@ function approvalTone(a) {
   return ["wait", "Perlu keputusan"];
 }
 
+const BULAN_PANJANG = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+const AGENT_GROUP = { intake: "order", fulfillment: "order", credit: "order", collection: "uang", cash_application: "uang", supervisor: "sistem" };
+const AGENT_CHIP = { intake: "IN", fulfillment: "FU", credit: "KR", collection: "PN", cash_application: "KM", supervisor: "SV" };
+const AGENT_TASK = { supervisor: "Brief pagi", collection: "Penagihan pagi", cash_application: "Pencocokan mutasi bank" };
+// agent summaries carry ISO dates; people read "Rabu 11 Nov"
+const humanDates = (text) => (text ? text.replace(/\b(\d{4}-\d{2}-\d{2})\b/g, (d) => tgl(d)) : text);
+const FEED_TABS = [["semua", "Semua"], ["order", "Order"], ["uang", "Uang"], ["sistem", "Sistem"]];
+const FEED_NODE_ICON = { order: "note", uang: "money", sistem: "info" };
+
+function longDate(iso) {
+  const d = new Date(iso);
+  return `${HARI[d.getDay()]}, ${d.getDate()} ${BULAN_PANJANG[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+// time since an event, measured on the simulation clock so it matches the clock in the sidebar
+function ago(iso) {
+  const now = app.state ? new Date(app.state.now) : new Date();
+  const mins = Math.round((now - new Date(iso)) / 60000);
+  if (mins < 1) return "baru saja";
+  if (mins < 60) return `${mins} mnt lalu`;
+  if (mins < 24 * 60 && now.getDate() === new Date(iso).getDate()) return `${Math.floor(mins / 60)} jam lalu`;
+  return jam(iso);
+}
+
+function activityRail(runs, approvals, orders) {
+  const nowIso = app.state ? app.state.now : new Date().toISOString();
+  const todayKey = nowIso.slice(0, 10);
+  const yesterday = new Date(new Date(todayKey + "T00:00:00").getTime() - 86400000);
+  const yKey = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, "0")}-${String(yesterday.getDate()).padStart(2, "0")}`;
+  const runsToday = runs.filter((r) => r.started_at.slice(0, 10) === todayKey);
+  const autoToday = orders.filter((o) => o.created_at.slice(0, 10) === todayKey && o.auto_processed && !o.was_edited && o.status !== "CANCELLED").length;
+
+  const filter = app.feedFilter || "semua";
+  const counts = { semua: runs.length };
+  runs.forEach((r) => { const g = AGENT_GROUP[r.agent] || "sistem"; counts[g] = (counts[g] || 0) + 1; });
+  const shown = runs.filter((r) => filter === "semua" || (AGENT_GROUP[r.agent] || "sistem") === filter);
+
+  const days = [];
+  shown.forEach((r) => {
+    const key = r.started_at.slice(0, 10);
+    let day = days.find((d) => d.key === key);
+    if (!day) { day = { key, runs: [] }; days.push(day); }
+    day.runs.push(r);
+  });
+  app.feedOpen = app.feedOpen || {};
+  const LIMIT = 6;
+
+  const item = (r) => {
+    const group = AGENT_GROUP[r.agent] || "sistem";
+    const failed = r.status === "FAILED";
+    return el("li", {},
+      el("span", { class: `feed-node${failed ? " bad" : ""}`, "aria-hidden": "true" }, icon(FEED_NODE_ICON[group], 13)),
+      el("button", { type: "button", class: "feed-item", onclick: () => openRun(r.id) },
+        el("span", { class: "feed-top" },
+          el("span", { class: "feed-title" }, r.customer || AGENT_TASK[r.agent] || `Agen ${AGENT[r.agent] || r.agent}`),
+          el("span", { class: "feed-time" }, ago(r.started_at))),
+        el("span", { class: "feed-text" }, humanDates(r.summary) || `${r.step_count} langkah`),
+        el("span", { class: "feed-meta" },
+          el("span", { class: "agent-chip", "aria-hidden": "true" }, AGENT_CHIP[r.agent] || "AG"),
+          `Agen ${AGENT[r.agent] || r.agent}`,
+          failed ? el("span", { class: "pill block" }, "Gagal") : null)));
+  };
+
+  const scroll = el("div", { class: "feed-scroll" });
+  if (!shown.length) {
+    scroll.append(el("p", { class: "state-msg", style: "padding:16px 0" },
+      runs.length ? "Tidak ada aktivitas untuk saringan ini." : "Belum ada aktivitas agen. Kirim pesan dari halaman Percakapan untuk melihat agen bekerja."));
+  }
+  days.forEach((day) => {
+    const label = day.key === todayKey ? "Hari ini" : day.key === yKey ? "Kemarin" : tgl(day.key);
+    const open = app.feedOpen[day.key];
+    const visible = open ? day.runs : day.runs.slice(0, LIMIT);
+    scroll.append(el("p", { class: "feed-day" }, label, el("span", { class: "n" }, day.runs.length)),
+      el("ol", { class: "feed-list" }, visible.map(item)));
+    if (day.runs.length > LIMIT) {
+      scroll.append(el("button", { type: "button", class: "feed-more", "aria-expanded": String(Boolean(open)),
+        onclick: () => { app.feedOpen[day.key] = !open; render(false); } },
+        open ? "Tampilkan lebih sedikit" : `Tampilkan ${day.runs.length - LIMIT} aktivitas lagi`));
+    }
+  });
+
+  return el("aside", { class: "panel activity", "aria-labelledby": "act-title" },
+    el("div", { class: "activity-head" },
+      el("div", {},
+        el("h2", { id: "act-title" }, "Aktivitas agen", el("span", { class: "pill live", title: "Halaman ini diperbarui sendiri saat agen bekerja" }, "Langsung")),
+        el("p", { class: "panel-sub" }, `Angka hari ini · data per ${jam(nowIso)}`))),
+    el("div", { class: "feed-stats" },
+      el("div", { class: "feed-stat" }, el("span", { class: "ico", "aria-hidden": "true" }, icon("check", 16)), el("b", {}, autoToday), el("span", {}, "Order otomatis")),
+      el("div", { class: "feed-stat" }, el("span", { class: "ico", "aria-hidden": "true" }, icon("clock", 16)), el("b", {}, runsToday.length), el("span", {}, "Kerja agen")),
+      el("div", { class: "feed-stat" }, el("span", { class: "ico", "aria-hidden": "true" }, icon("alert", 16)), el("b", {}, approvals.length), el("span", {}, "Menunggu Anda"))),
+    el("div", { class: "feed-tabs", role: "group", "aria-label": "Saring aktivitas" },
+      FEED_TABS.map(([key, label]) => el("button", { type: "button", class: "feed-tab", "aria-pressed": String(filter === key),
+        onclick: () => { app.feedFilter = key; render(false); } }, label, el("small", {}, counts[key] || 0)))),
+    scroll);
+}
+
 async function viewDesk() {
-  const [approvals, runs, orders] = await Promise.all([api("/api/approvals"), api("/api/runs?limit=25"), api("/api/orders?limit=200")]);
+  const [approvals, runs, orders] = await Promise.all([api("/api/approvals"), api("/api/runs?limit=60"), api("/api/orders?limit=200")]);
   if (!app.products) app.products = await api("/api/products");
   if (!app.customers.length) app.customers = await api("/api/customers");
 
-  // summary figures, all counted from the API responses above
+  // KPI figures, all counted from the API responses above
   const byKind = {};
   approvals.forEach((a) => { byKind[a.kind] = (byKind[a.kind] || 0) + 1; });
   const kinds = Object.entries(byKind).sort((x, y) => y[1] - x[1]);
@@ -488,21 +587,25 @@ async function viewDesk() {
   const live = orders.filter((o) => o.status !== "CANCELLED");
   const auto = live.filter((o) => o.auto_processed && !o.was_edited).length;
   const filled = live.length ? Math.round((auto / live.length) * 10) : 0;
+  const newest = approvals[0];
 
-  const summary = el("section", { class: "panel summary", "aria-label": "Ringkasan" },
-    el("div", {},
+  const kpis = el("section", { class: "kpis", "aria-label": "Ringkasan" },
+    el("div", { class: "panel kpi" },
       el("p", { class: "fig-label" }, "Menunggu keputusan Anda"),
-      el("p", { class: "fig num" }, approvals.length, el("small", {}, approvals.length ? "hal" : "kosong")),
-      kinds.length ? el("p", { class: "legend" }, kinds.slice(0, 3).map(([k, n]) => el("span", {}, el("b", {}, n), ` ${APPROVAL[k] || k}`))) : el("p", { class: "legend" }, "Agen menangani semuanya sendiri.")),
-    el("div", {},
+      el("p", { class: "fig num" }, approvals.length, el("small", {}, "hal")),
+      kinds.length ? el("p", { class: "legend" }, kinds.slice(0, 3).map(([k, n]) => el("span", {}, el("b", {}, n), ` ${APPROVAL[k] || k}`))) : null,
+      el("p", { class: "kpi-foot" }, newest ? `Terbaru: ${APPROVAL[newest.kind] || newest.kind}, ${approvalWho(newest)}` : "Agen menangani semuanya sendiri.")),
+    el("div", { class: "panel kpi" },
       el("p", { class: "fig-label" }, "Nilai yang tertahan"),
       el("p", { class: "fig num" }, rupiah(held)),
-      el("p", { class: "legend" }, el("span", {}, el("b", {}, nOrders), " order"), el("span", {}, el("b", {}, nMoney), " pembayaran atau klaim"))),
-    el("div", {},
-      el("p", { class: "fig-label" }, "Order selesai tanpa disentuh admin"),
-      el("p", { class: "fig num" }, live.length ? `${auto} dari ${live.length}` : "Belum ada order"),
-      el("div", { class: "segbar", "aria-hidden": "true" }, Array.from({ length: 10 }, (_, i) => el("span", { class: i < filled ? "ok" : "" }))),
-      el("p", { class: "legend" }, "Order yang tidak dikoreksi atau dicek admin.")));
+      el("p", { class: "legend" }, el("span", {}, el("b", {}, nOrders), " order"), el("span", {}, el("b", {}, nMoney), " pembayaran atau klaim")),
+      el("p", { class: "kpi-foot" }, "Uang dan barang yang menunggu keputusan di bawah.")),
+    el("div", { class: "panel kpi" },
+      el("p", { class: "fig-label" }, "Order selesai otomatis"),
+      el("p", { class: "fig num" }, live.length ? auto : "0", el("small", {}, live.length ? `dari ${live.length} order` : "belum ada order")),
+      el("div", { class: "segbar", role: "img", "aria-label": `${auto} dari ${live.length} order otomatis` },
+        Array.from({ length: 10 }, (_, i) => el("span", { class: i < filled ? "ok" : "" }))),
+      el("p", { class: "kpi-foot" }, "Order yang tidak dikoreksi atau dicek admin.")));
 
   const queue = approvals.length
     ? el("table", { class: "table cards" },
@@ -524,23 +627,17 @@ async function viewDesk() {
       "Order dan pembayaran yang yakin diproses agen sendiri. Kirim pesan dari Percakapan untuk melihat agen bekerja.",
       ["#/percakapan", "Buka Percakapan"]);
 
-  const activity = runs.length
-    ? el("div", { class: "feed" }, runs.map((r) => el("button", { type: "button", onclick: () => openRun(r.id) },
-      el("span", { class: "who" }, el("span", {}, `${AGENT[r.agent] || r.agent}${r.customer ? " · " + r.customer : ""}`), el("span", {}, jam(r.started_at))),
-      el("span", { class: "what" }, r.summary || `${r.step_count} langkah`))))
-    : el("p", { class: "state-msg" }, "Belum ada aktivitas agen.");
-
   return el("div", {},
-    pageHead("Meja kerja", "Hal yang tidak bisa diputuskan agen sendiri. Buka satu baris untuk melihat alasannya, aturan yang diperiksa, dan rantai agennya.", ROLE_SCOPE[app.user.role]),
+    pageHead("Meja kerja", "Hal yang tidak bisa diputuskan agen sendiri. Buka satu baris untuk melihat alasannya, aturan yang diperiksa, dan rantai agennya.",
+      ROLE_SCOPE[app.user.role], null, { live: true, meta: app.state ? `${longDate(app.state.now)} · jam simulasi ${jam(app.state.now)}` : null }),
     el("div", { class: "desk" },
-      el("div", { class: "desk-main" }, summary,
+      el("div", { class: "desk-main" }, kpis,
         el("section", { class: "panel", "aria-labelledby": "q-title" },
-          el("div", { class: "panel-head" }, el("h2", { id: "q-title" }, "Antrean keputusan"),
-            el("span", { class: "muted small" }, "terbaru di atas")),
+          el("div", { class: "panel-head" },
+            el("div", {}, el("h2", { id: "q-title" }, "Antrean keputusan"),
+              el("p", { class: "panel-sub" }, "Terbaru di atas. Klik baris untuk memutuskan."))),
           queue)),
-      el("aside", { class: "panel", "aria-labelledby": "act-title" },
-        el("div", { class: "panel-head" }, el("h2", { id: "act-title" }, "Aktivitas agen"), el("span", { class: "muted small" }, "terbaru di atas")),
-        activity)));
+      activityRail(runs, approvals, orders)));
 }
 
 async function openApproval(a) {
@@ -1186,7 +1283,7 @@ function closeMenu() {
 
 function setupChrome() {
   const themeBtn = $("#theme");
-  const currentTheme = () => document.documentElement.dataset.theme || "dark";
+  const currentTheme = () => document.documentElement.dataset.theme || "light";
   const label = () => { themeBtn.textContent = currentTheme() === "dark" ? "Tema terang" : "Tema gelap"; };
   label();
   themeBtn.addEventListener("click", () => {

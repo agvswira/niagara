@@ -1,17 +1,17 @@
 <!doctype html>
-<html lang="id" data-theme="dark">
+<html lang="id" data-theme="light">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Niagara · Meja kerja distributor</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
-  <link rel="stylesheet" href="/static/styles.css?v=17">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap">
+  <link rel="stylesheet" href="/static/styles.css?v=19">
   <script>
     try { const t = localStorage.getItem("niagara-theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
   </script>
-  <script src="/static/app.js?v=14" defer></script>
+  <script src="/static/app.js?v=19" defer></script>
 </head>
 <body class="signed-out">
   <a class="skip" href="#main">Langsung ke isi</a>
@@ -23,22 +23,25 @@
 
   <aside class="sidebar" id="sidebar">
     <div class="side-brand">
-      <span class="wordmark">Niagara</span>
-      <span class="company" id="company"></span>
+      <span class="brand-mark" aria-hidden="true">N</span>
+      <div class="side-brand-text">
+        <span class="wordmark">Niagara</span>
+        <span class="company" id="company"></span>
+      </div>
     </div>
 
     <nav class="side-nav" aria-label="Halaman">
       <p class="nav-label">Kerja</p>
-      <a href="#/meja" data-route="meja"><span>Meja kerja</span><span class="count" id="count-approvals"></span></a>
-      <a href="#/percakapan" data-route="percakapan"><span>Percakapan</span></a>
-      <a href="#/order" data-route="order"><span>Order</span></a>
-      <a href="#/stok" data-route="stok"><span>Stok</span></a>
+      <a href="#/meja" data-route="meja"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path d="M3 13h4.5l1.5 3h6l1.5-3H21M5.2 5h13.6L21 13v5a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Meja kerja</span><span class="count" id="count-approvals"></span></a>
+      <a href="#/percakapan" data-route="percakapan"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path d="M4 5h16v11H10l-6 4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Percakapan</span></a>
+      <a href="#/order" data-route="order"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6M9 16h3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Order</span></a>
+      <a href="#/stok" data-route="stok"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path d="M3 7.5l9-4 9 4-9 4zM3 7.5v9l9 4 9-4v-9M12 11.5v9" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Stok</span></a>
       <p class="nav-label">Uang</p>
-      <a href="#/piutang" data-route="piutang"><span>Piutang</span></a>
-      <a href="#/kas" data-route="kas"><span>Kas masuk</span><span class="count" id="count-unmatched"></span></a>
+      <a href="#/piutang" data-route="piutang"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7.5V12l3 2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Piutang</span></a>
+      <a href="#/kas" data-route="kas"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path d="M3 7h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM3 7l12-3.5V7M16.5 13.5h1.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Kas masuk</span><span class="count" id="count-unmatched"></span></a>
       <p class="nav-label">Kendali</p>
-      <a href="#/brief" data-route="brief"><span>Brief pagi</span></a>
-      <a href="#/aturan" data-route="aturan"><span>Aturan</span></a>
+      <a href="#/brief" data-route="brief"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path d="M3 19h18M7 19a5 5 0 0 1 10 0M12 7v3M5.3 11.3l1.6 1.6M18.7 11.3l-1.6 1.6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Brief pagi</span></a>
+      <a href="#/aturan" data-route="aturan"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1M15 4v4M9 10v4M17 16v4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Aturan</span></a>
     </nav>
 
     <section class="sim-card" aria-labelledby="sim-title">
