@@ -55,6 +55,8 @@ Buka http://localhost:8000. Database SQLite dan data simulasi (40 produk, 25 tok
 
 Akun demo: `supervisor`. Dengan `NIAGARA_ROLE_ACCOUNTS=1` di `.env`, akun `admin` (admin order) dan `ar` (staf AR) ikut dibuat saat data di-reset. Kata sandinya diambil dari `NIAGARA_DEMO_PASSWORD` di `.env`; nilai bawaannya ada di `.env.example`. Ganti sebelum dipasang di alamat publik.
 
+Tombol **Coba demo** di halaman depan (`/demo`) langsung memasukkan pengunjung sebagai supervisor demo supaya juri tidak perlu mengetik kata sandi. Karena tautannya publik, pesan simulasi yang memakai LLM dibatasi 40 per pengunjung per 10 menit dan 300 per jam untuk semua pengunjung (`DEMO_MESSAGES_PER_VISITOR`, `DEMO_MESSAGES_PER_HOUR`, isi 0 untuk mematikan). Semua data di demo adalah simulasi, dan tidak ada pesan atau uang sungguhan yang keluar. Untuk pemakaian sungguhan, matikan login satu klik dengan `NIAGARA_DEMO_LOGIN=0` dan ganti kata sandinya.
+
 Di Windows, letakkan virtualenv di path yang pendek (misalnya `C:\venvs\niagara`). Beberapa paket memuat DLL yang gagal bila path folder terlalu panjang.
 
 ### Mode LLM

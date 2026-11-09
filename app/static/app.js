@@ -971,7 +971,7 @@ async function viewChat() {
     data.messages.length ? `Pesan terakhir dari ${data.messages[data.messages.length - 1].direction === "out" ? "Niagara" : c.owner}` : "");
 
   // ---- composer ----
-  const input = el("textarea", { id: "composer", "data-keep": "composer", rows: "1", placeholder: "Ketik pesan",
+  const input = el("textarea", { id: "composer", "data-keep": "composer", rows: "1", maxlength: "2000", placeholder: "Ketik pesan",
     oninput: () => {
       input.style.height = "auto";
       input.style.height = `${Math.min(input.scrollHeight + 2, 140)}px`;
@@ -1421,6 +1421,7 @@ function showLogin() {
     el("div", { class: "field" }, el("label", { for: "login-user" }, "Nama pengguna"), user),
     el("div", { class: "field" }, el("label", { for: "login-pass" }, "Kata sandi"), pass),
     error, submit,
+    el("a", { class: "btn btn-block", href: "/demo" }, "Masuk sebagai supervisor demo"),
     el("a", { class: "small", href: "/", style: "justify-self:center" }, "Kembali ke halaman Niagara"));
   $("#main").replaceChildren(form);
   user.focus();

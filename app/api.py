@@ -1,16 +1,17 @@
 import csv
 import io
+import os
 import threading
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-from app import demo, auth, clock, db, events, onboarding, sim
+from app import demo, auth, clock, db, events, onboarding, ratelimit, sim
 from app.agents.supervisor import build_brief
 from app.config import settings
 from app.llm.client import get_llm
@@ -216,7 +217,7 @@ def conversation(cid: int) -> dict:
 
 
 class SimMessage(BaseModel):
-    text: str
+    text: str = Field(max_length=2000)
 
 
 class SimPay(BaseModel):
@@ -225,7 +226,7 @@ class SimPay(BaseModel):
     bank: str = "BCA"
 
 
-@app.post("/api/simulator/{cid}/message")
+@app.post("/api/simulator/{cid}/message", dependencies=[Depends(ratelimit.check)])
 def sim_message(cid: int, body: SimMessage) -> dict:
     if not body.text.strip():
         raise HTTPException(422, "Pesan kosong")
@@ -236,7 +237,7 @@ def sim_message(cid: int, body: SimMessage) -> dict:
     return {"message_id": mid}
 
 
-@app.post("/api/simulator/{cid}/nota")
+@app.post("/api/simulator/{cid}/nota", dependencies=[Depends(ratelimit.check)])
 def sim_nota(cid: int, body: SimMessage) -> dict:
     if not body.text.strip():
         raise HTTPException(422, "Isi nota kosong")
@@ -248,7 +249,7 @@ def sim_nota(cid: int, body: SimMessage) -> dict:
     return {"message_id": mid}
 
 
-@app.post("/api/simulator/{cid}/upload")
+@app.post("/api/simulator/{cid}/upload", dependencies=[Depends(ratelimit.check)])
 async def sim_upload(cid: int, file: UploadFile = File(...), caption: str = Form("")) -> dict:
     ctype = file.content_type or ""
     if not (ctype.startswith("image/") or ctype.startswith("audio/")):
@@ -502,7 +503,10 @@ def bank_import_feed() -> dict:
 @app.post("/api/bank/upload-csv")
 async def bank_upload(file: UploadFile = File(...)) -> dict:
     """CSV columns: tanggal (YYYY-MM-DD), keterangan, nominal, bank, ref."""
-    text = (await file.read()).decode("utf-8-sig", errors="replace")
+    raw = await file.read()
+    if len(raw) > 1024 * 1024:
+        raise HTTPException(413, "File CSV lebih dari 1 MB")
+    text = raw.decode("utf-8-sig", errors="replace")
     rows = []
     for i, r in enumerate(csv.DictReader(io.StringIO(text))):
         try:
@@ -726,11 +730,11 @@ def bounce(tx_id: int, request: Request) -> dict:
 
 
 class UnknownMessage(BaseModel):
-    handle: str
-    text: str
+    handle: str = Field(max_length=40)
+    text: str = Field(max_length=2000)
 
 
-@app.post("/api/simulator/unknown")
+@app.post("/api/simulator/unknown", dependencies=[Depends(ratelimit.check)])
 def sim_unknown(body: UnknownMessage) -> dict:
     handle = "".join(ch for ch in body.handle if ch.isdigit() or ch == "+")[:20]
     if len(handle) < 8 or not body.text.strip():
@@ -754,6 +758,19 @@ def index() -> FileResponse:
 
 
 @app.get("/demo")
-def demo() -> RedirectResponse:
-    # old landing links pointed here; the demo now always goes through the login form
-    return RedirectResponse("/app", status_code=303)
+def demo_login(request: Request):
+    """One click from the landing page into the app as the demo supervisor (its password is public in the README).
+
+    Set NIAGARA_DEMO_LOGIN=0 to turn this off on a real deployment.
+    """
+    if os.getenv("NIAGARA_DEMO_LOGIN", "1") == "0":
+        return RedirectResponse("/app", status_code=303)
+    with db.session_scope() as s:
+        user = s.query(User).filter_by(username="supervisor").first()
+        if user is None:
+            return RedirectResponse("/app", status_code=303)
+        token = auth.make_token(s, user.username)
+    resp = RedirectResponse("/app#/percakapan", status_code=303)
+    secure = request.headers.get("x-forwarded-proto", request.url.scheme) == "https"
+    resp.set_cookie(auth.COOKIE, token, httponly=True, samesite="lax", secure=secure, max_age=auth.SESSION_SECONDS)
+    return resp
