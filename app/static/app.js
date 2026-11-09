@@ -587,7 +587,7 @@ function activityRail(runs, approvals, orders) {
     el("div", { class: "activity-head" },
       el("div", {},
         el("h2", { id: "act-title" }, "Aktivitas agen", el("span", { class: "pill live", title: "Halaman ini diperbarui sendiri saat agen bekerja" }, "Langsung")),
-        el("p", { class: "panel-sub" }, `Angka hari ini · data per ${jam(nowIso)}`))),
+        el("p", { class: "panel-sub" }, `Hari ini, per ${jam(nowIso)}`))),
     el("div", { class: "feed-stats" },
       el("div", { class: "feed-stat" }, el("span", { class: "ico", "aria-hidden": "true" }, icon("check", 16)), el("b", {}, autoToday), el("span", {}, "Order otomatis")),
       el("div", { class: "feed-stat" }, el("span", { class: "ico", "aria-hidden": "true" }, icon("clock", 16)), el("b", {}, runsToday.length), el("span", {}, "Kerja agen")),
@@ -613,25 +613,22 @@ async function viewDesk() {
   const live = orders.filter((o) => o.status !== "CANCELLED");
   const auto = live.filter((o) => o.auto_processed && !o.was_edited).length;
   const filled = live.length ? Math.round((auto / live.length) * 10) : 0;
-  const newest = approvals[0];
 
   const kpis = el("section", { class: "kpis", "aria-label": "Ringkasan" },
     el("div", { class: "panel kpi" },
       el("p", { class: "fig-label" }, "Menunggu keputusan Anda"),
       el("p", { class: "fig num" }, approvals.length, el("small", {}, "hal")),
       kinds.length ? el("p", { class: "legend" }, kinds.slice(0, 3).map(([k, n]) => el("span", {}, el("b", {}, n), ` ${APPROVAL[k] || k}`))) : null,
-      el("p", { class: "kpi-foot" }, newest ? `Terbaru: ${APPROVAL[newest.kind] || newest.kind}, ${approvalWho(newest)}` : "Agen menangani semuanya sendiri.")),
+      kinds.length ? null : el("p", { class: "kpi-foot" }, "Semua ditangani agen")),
     el("div", { class: "panel kpi" },
       el("p", { class: "fig-label" }, "Nilai yang tertahan"),
       el("p", { class: "fig num" }, rupiah(held)),
-      el("p", { class: "legend" }, el("span", {}, el("b", {}, nOrders), " order"), el("span", {}, el("b", {}, nMoney), " pembayaran atau klaim")),
-      el("p", { class: "kpi-foot" }, "Uang dan barang yang menunggu keputusan di bawah.")),
+      el("p", { class: "legend" }, el("span", {}, el("b", {}, nOrders), " order"), el("span", {}, el("b", {}, nMoney), " pembayaran atau klaim"))),
     el("div", { class: "panel kpi" },
-      el("p", { class: "fig-label" }, "Order selesai otomatis"),
+      el("p", { class: "fig-label", title: "Order yang tidak dikoreksi atau dicek admin" }, "Order selesai otomatis"),
       el("p", { class: "fig num" }, live.length ? auto : "0", el("small", {}, live.length ? `dari ${live.length} order` : "belum ada order")),
       el("div", { class: "segbar", role: "img", "aria-label": `${auto} dari ${live.length} order otomatis` },
-        Array.from({ length: 10 }, (_, i) => el("span", { class: i < filled ? "ok" : "" }))),
-      el("p", { class: "kpi-foot" }, "Order yang tidak dikoreksi atau dicek admin.")));
+        Array.from({ length: 10 }, (_, i) => el("span", { class: i < filled ? "ok" : "" })))));
 
   const queue = approvals.length
     ? el("table", { class: "table cards" },
@@ -646,22 +643,19 @@ async function viewDesk() {
             el("div", { class: "cell-sub truncate" }, a.reason)),
           el("td", { "data-label": "Toko" }, approvalWho(a)),
           el("td", { class: "right num", "data-label": "Nilai" }, amount ? rupiah(amount) : "-"),
-          el("td", { "data-label": "Masuk" }, tgl(a.created_at, true)),
+          el("td", { "data-label": "Masuk", class: "nowrap", title: tgl(a.created_at, true) }, ago(a.created_at)),
           el("td", { "data-label": "Status" }, el("span", { class: `pill ${tone}` }, label)));
       })))
-    : emptyState("Tidak ada yang menunggu keputusan Anda",
-      "Order dan pembayaran yang yakin diproses agen sendiri. Kirim pesan dari Percakapan untuk melihat agen bekerja.",
-      ["#/percakapan", "Buka Percakapan"]);
+    : emptyState("Semua sudah ditangani agen", "Belum ada yang perlu Anda putuskan.", ["#/percakapan", "Buka Percakapan"]);
 
   return el("div", {},
-    pageHead("Meja kerja", "Hal yang tidak bisa diputuskan agen sendiri. Buka satu baris untuk melihat alasannya, aturan yang diperiksa, dan rantai agennya.",
-      app.user.role === "supervisor" ? null : ROLE_SCOPE[app.user.role], null, { live: true, meta: app.state ? `${longDate(app.state.now)} · jam simulasi ${jam(app.state.now)}` : null }),
+    pageHead("Meja kerja", null, app.user.role === "supervisor" ? null : ROLE_SCOPE[app.user.role], null,
+      { meta: app.state ? longDate(app.state.now) : null }),
     el("div", { class: "desk" },
       el("div", { class: "desk-main" }, kpis,
         el("section", { class: "panel", "aria-labelledby": "q-title" },
           el("div", { class: "panel-head" },
-            el("div", {}, el("h2", { id: "q-title" }, "Antrean keputusan"),
-              el("p", { class: "panel-sub" }, "Terbaru di atas. Klik baris untuk memutuskan."))),
+            el("h2", { id: "q-title" }, "Antrean keputusan", approvals.length ? el("span", { class: "count" }, approvals.length) : null)),
           queue)),
       activityRail(runs, approvals, orders)));
 }
@@ -1070,7 +1064,7 @@ async function viewChat() {
     customerInfo(data));
 
   return el("div", { class: "chat-page" },
-    pageHead("Percakapan", "Kirim pesan sebagai pemilik toko, lalu lihat agen membaca, mencocokkan, dan memutuskan. Layar ini simulator yang dibuat mirip WhatsApp, bukan aplikasi WhatsApp asli."),
+    pageHead("Percakapan", "Ketik sebagai pemilik toko dan lihat agen bekerja."),
     el("div", { class: `chat-app${app.chatOpen ? " has-chat" : ""}${app.chatInfo ? " show-info" : ""}` }, list, pane, app.chatInfo ? info : null));
 }
 
@@ -1095,7 +1089,7 @@ async function viewOrders() {
     : filter ? emptyState("Tidak ada order dengan status ini", "Coba pilih status lain.")
       : emptyState("Belum ada order", "Kirim pesan pertama dari halaman Percakapan.", ["#/percakapan", "Buka Percakapan"]);
   return el("div", {},
-    pageHead("Order", "Semua order yang masuk lewat percakapan, dengan siapa yang menanganinya. Buka satu order untuk melihat aturan yang diperiksa dan rantai agennya.", null,
+    pageHead("Order", null, null,
       el("div", { class: "field", style: "min-width:220px" }, el("label", { for: "order-filter" }, "Tampilkan"), sel)),
     el("div", { class: "panel" }, body));
 }
@@ -1108,7 +1102,7 @@ async function viewAR() {
   const parts = [["belum_jatuh_tempo", "Belum jatuh tempo", "var(--ok)"], ["1_7", "Telat 1 sampai 7 hari", "color-mix(in srgb, var(--warn) 55%, var(--surface))"],
     ["8_30", "Telat 8 sampai 30 hari", "var(--warn)"], ["lebih_30", "Telat lebih dari 30 hari", "var(--danger)"]];
   return el("div", {},
-    pageHead("Piutang", `Umur piutang per ${tgl(ar.today)}. Agen penagihan berjalan setiap pagi saat waktu simulasi maju.`),
+    pageHead("Piutang", null, null, null, { meta: `Per ${tgl(ar.today)}` }),
     el("div", { class: "two-col" },
       el("div", { class: "stack" },
         el("section", { class: "panel panel-pad", "aria-labelledby": "aging-title" },
@@ -1164,10 +1158,9 @@ async function viewCash() {
   } });
   const waiting = data.feed_waiting.length;
   return el("div", {},
-    pageHead("Kas masuk", "Mutasi bank dicocokkan ke bukti transfer dan invoice. Yang tidak yakin masuk Meja kerja.",
-      "Format CSV: tanggal (YYYY-MM-DD), keterangan, nominal, bank, ref.",
+    pageHead("Kas masuk", null, null,
       el("div", { class: "row-actions" },
-        el("label", { for: "csv", class: "btn", role: "button", tabindex: "0",
+        el("label", { for: "csv", class: "btn", role: "button", tabindex: "0", title: "Kolom CSV: tanggal (YYYY-MM-DD), keterangan, nominal, bank, ref",
           onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); csvInput.click(); } } }, "Unggah CSV mutasi"), csvInput,
         el("button", { type: "button", class: "btn btn-primary", disabled: waiting ? null : true, onclick: (e) => importFeed(e.currentTarget) },
           waiting ? `Impor ${waiting} mutasi bank` : "Tidak ada mutasi menunggu"))),
@@ -1241,8 +1234,7 @@ async function viewStock() {
   const out = rows.filter((p) => p.available <= 0).length;
   const back = rows.filter((p) => p.backorder).length;
   return el("div", {},
-    pageHead("Stok", "Stok gudang dan backorder. Barang yang dicatat masuk langsung dipakai agen untuk kiriman susulan, mulai dari pesanan paling lama.",
-      `${rows.length} produk, ${out} habis, ${back} punya backorder.`),
+    pageHead("Stok", null, null, null, { meta: `${rows.length} produk · ${out} habis · ${back} backorder` }),
     el("div", { class: "panel" }, el("table", { class: "table cards" },
       el("thead", {}, el("tr", {}, el("th", {}, "Produk"), el("th", { class: "right" }, "Tersedia"), el("th", { class: "right" }, "Dipesan"),
         el("th", { class: "right" }, "Backorder"), canReceive ? el("th", {}, "Barang masuk") : null)),
@@ -1273,8 +1265,8 @@ async function viewBrief() {
   lead.push(b.total_lewat_jatuh_tempo ? `Piutang lewat jatuh tempo ${rupiah(b.total_lewat_jatuh_tempo)}.` : "Tidak ada piutang lewat jatuh tempo.");
   const box = (title, body) => el("section", { class: "panel panel-pad stack" }, el("h2", {}, title), body);
   return el("div", {},
-    pageHead(`Brief pagi, ${b.hari}`, fromAgent ? "Disusun Supervisor Agent saat waktu simulasi masuk hari baru."
-      : "Supervisor Agent belum menyusun brief. Ini hitungan langsung dari data saat ini; tekan Maju 1 hari untuk menjalankan siklus pagi."),
+    pageHead(`Brief pagi, ${b.hari}`, null, null, null,
+      { meta: fromAgent ? "Disusun Agen Supervisor" : "Hitungan langsung. Tekan Maju 1 hari agar Agen Supervisor menyusunnya." }),
     el("div", { class: "two-col" },
       el("section", { class: "panel panel-pad stack" },
         el("p", { class: "brief-lead" }, lead.join(" ")),
@@ -1325,8 +1317,8 @@ async function viewRules() {
       catch (err) { toast(err.message); }
     } }, [[0, "0, shadow"], [1, "1, copilot"], [2, "2, autopilot"]].map(([v, l]) => el("option", { value: v, selected: v === c.autonomy_level || null }, l))))));
   return el("div", {},
-    pageHead("Aturan", "Agen tidak menentukan harga, diskon, atau batas kredit. Semua diambil dari aturan di sini, dan setiap perubahan tercatat di audit log.",
-      canEdit ? null : "Hanya supervisor yang bisa mengubah aturan dan level otonomi. Anda bisa melihatnya saja."),
+    pageHead("Aturan", null, canEdit ? null : "Hanya supervisor yang bisa mengubah aturan dan level otonomi.", null,
+      { meta: "Harga, diskon, dan kredit selalu dari sini, bukan dari agen. Setiap perubahan masuk audit log." }),
     el("div", { class: "two-col" },
       el("section", { class: "panel" }, el("div", { class: "panel-head" }, el("h2", {}, "Aturan bisnis")),
         el("table", { class: "table cards" }, el("tbody", {}, policyRows))),

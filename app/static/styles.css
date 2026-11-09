@@ -237,6 +237,7 @@ body.signed-out .content { margin-left: 0; }
 .table .right { text-align: right; }
 .table td a { display: inline-flex; align-items: center; min-height: 32px; }
 .cell-main { font-weight: 500; }
+.table td.nowrap { white-space: nowrap; }
 .row-btn {
   display: inline-flex; align-items: center; min-height: 32px; padding: 0; border: 0; background: none;
   color: var(--ink); font-weight: 600; text-align: left;
@@ -265,9 +266,9 @@ body.signed-out .content { margin-left: 0; }
 .feed-stat .ico { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; background: var(--surface); color: var(--accent-ink); margin-bottom: 4px; }
 .feed-stat b { font-size: 1.125rem; font-weight: 800; }
 .feed-stat span { font-size: 0.72rem; color: var(--muted); line-height: 1.3; }
-.feed-tabs { display: flex; flex-wrap: wrap; gap: 6px; padding: 14px 22px 4px; }
+.feed-tabs { display: flex; flex-wrap: wrap; gap: 2px; padding: 14px 18px 4px; }
 .feed-tab {
-  display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 12px;
+  display: inline-flex; align-items: center; gap: 5px; min-height: 32px; padding: 0 10px;
   border: 1px solid transparent; border-radius: 999px; background: transparent; color: var(--muted); font-size: 0.8125rem; font-weight: 600;
 }
 .feed-tab:hover { color: var(--ink); background: var(--surface-2); }
@@ -603,6 +604,19 @@ body.signed-out .content { margin-left: 0; }
   .chat-app.show-info { grid-template-columns: clamp(280px, 28vw, 420px) minmax(0, 1fr); }
   .desk { grid-template-columns: minmax(0, 1fr); }
   .activity { position: static; max-height: none; }
+}
+
+/* the decision queue has five columns; below this width it reads better as stacked cards */
+@media (max-width: 1180px) {
+  .desk .table.cards thead { display: none; }
+  .desk .table.cards, .desk .table.cards tbody, .desk .table.cards tr, .desk .table.cards td { display: block; width: 100%; }
+  .desk .table.cards tr { padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .desk .table.cards tbody tr:last-child { border-bottom: 0; }
+  .desk .table.cards td { border: 0; padding: 3px 18px; display: flex; justify-content: space-between; align-items: center; gap: 12px; text-align: right; }
+  .desk .table.cards td::before { content: attr(data-label); color: var(--muted); font-size: 0.75rem; text-align: left; flex: none; }
+  .desk .table.cards td.stack-cell { display: grid; gap: 4px; text-align: left; }
+  .desk .table.cards td.stack-cell::before { display: none; }
+  .desk .truncate { max-width: 100%; }
 }
 
 @media (max-width: 960px) {
