@@ -12,7 +12,7 @@ db.configure("sqlite:///:memory:")
 from app import auth, events, sim  # noqa: E402
 from app.api import app  # noqa: E402
 from app.llm.client import LLMService, set_llm  # noqa: E402
-from app.models import Approval  # noqa: E402
+from app.models import Approval, PromiseToPay  # noqa: E402
 from app.privacy import redact  # noqa: E402
 from app.seed import reset_and_seed  # noqa: E402
 
@@ -107,6 +107,8 @@ def test_reset_reruns_the_opening_scenarios(client, monkeypatch, tmp_path):
     assert client.post("/api/sim/reset").status_code == 200
     with db.session_scope() as s:
         assert s.query(Approval).count() > 0  # the opening scenarios leave decisions on the desk
+        # and include one dunning example: a reminder answered with a promise to pay
+        assert s.query(PromiseToPay).filter_by(status="OPEN").count() == 1
 
 
 def test_demo_link_redirects_to_the_app(client):

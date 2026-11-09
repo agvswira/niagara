@@ -52,13 +52,16 @@ def check_promises(s: Session) -> list[str]:
     return log
 
 
-def daily_dunning(s: Session) -> dict:
+def daily_dunning(s: Session, only: set[int] | None = None) -> dict:
     today = clock.today(s)
     now = clock.now(s)
     promised_customers = {p.customer_id for p in s.query(PromiseToPay).filter(PromiseToPay.status == "OPEN",
                                                                                PromiseToPay.promised_date >= today)}
     by_customer: dict[int, list[tuple[Invoice, int]]] = defaultdict(list)
-    for inv in s.query(Invoice).filter(Invoice.status.in_(UNPAID)):
+    unpaid = s.query(Invoice).filter(Invoice.status.in_(UNPAID))
+    if only is not None:
+        unpaid = unpaid.filter(Invoice.customer_id.in_(only))
+    for inv in unpaid:
         st = stage_for((inv.due_date - today).days)
         if st is None:
             continue
@@ -108,6 +111,14 @@ def on_daily(s: Session, ev) -> None:
         summary = daily_dunning(s)
         tracing.summarize(f"Penagihan {clock.today(s)}: {summary['pengingat_terkirim']} pengingat, {summary['eskalasi']} eskalasi")
     events.emit(s, "schedule.brief", payload={"collection": summary})
+
+
+def remind_now(s: Session, customer_id: int) -> dict:
+    """Run the dunning rules for one shop outside the morning cycle; the opening demo uses it for one example."""
+    with tracing.agent_run(s, "collection", entity_type="customer", entity_id=customer_id, customer_id=customer_id):
+        summary = daily_dunning(s, only={customer_id})
+        tracing.summarize(f"Penagihan {s.get(Customer, customer_id).name}: {summary['pengingat_terkirim']} pengingat")
+    return summary
 
 
 @events.on("collection.reply")

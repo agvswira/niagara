@@ -548,7 +548,8 @@ def promise(state: IntakeState, config) -> IntakeState:
     s = _session(config)
     events.emit(s, "collection.reply", "message", state["message_id"],
                 {"customer_id": state["customer_id"], "promise": state["u"].promise.model_dump()})
-    tracing.step("decision", "Janji bayar diteruskan ke Credit & Collection Agent", state["u"].promise.model_dump())
+    tracing.step("decision", "Janji bayar diteruskan ke Agen Penagihan", state["u"].promise.model_dump())
+    tracing.summarize(f"Janji bayar {s.get(Customer, state['customer_id']).name} diteruskan ke Agen Penagihan")
     return {"outcome": "promise"}
 
 

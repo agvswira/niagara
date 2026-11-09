@@ -3,7 +3,8 @@
 A fresh database used to have empty chats until someone pressed "advance one day", and then the morning dunning
 run filled every chat with reminders. These scripted messages give each shop a different situation, so a viewer
 sees every agent at work: Intake reading and asking back, Fulfillment substituting and backordering, Credit holding
-and releasing, Cash Application matching a transfer, and the human desk receiving what agents should not decide.
+and releasing, Collection reminding one late shop and recording its promise to pay, Cash Application matching a
+transfer, and the human desk receiving what agents should not decide.
 
 The scenarios use the offline parser so a reset is fast, repeatable and spends no LLM quota. Every step is a normal
 agent run with a full trace; nothing is written straight into the database.
@@ -13,6 +14,7 @@ import logging
 from datetime import timedelta
 
 from app import clock, db, events, onboarding, sim
+from app.agents import collection
 from app.llm.client import LLMService, get_llm, set_llm
 from app.models import Customer
 from app.tools.credit import snapshot
@@ -37,6 +39,9 @@ SCRIPT = [
     (90, "Toko Anugrah", "say", "indomie goreng 3 dus, aqua tgg 2 dus"),
     (97, "Grosir Pak Slamet", "say", "sudah tf ya, sekalian order indomie goreng 5 dus. pesanan kemarin kapan dikirim?"),
     (104, None, "unknown", "indomie goreng 2 dus sama aqua tgg 1 dus ya"),
+    # one dunning example: the collection agent reminds a late shop, the owner answers with a promise to pay
+    (110, "Toko Harapan Kita", "remind", ""),
+    (116, "Toko Harapan Kita", "say", "minggu depan kamis ya, separo dulu"),
 ]
 
 
@@ -58,6 +63,8 @@ def run_opening_scenarios() -> None:
                         sim.customer_pays(s, ids[shop], snap["overdue_amount"] or snap["outstanding"])
                     elif action == "bank":
                         sim.import_feed(s)
+                    elif action == "remind":
+                        collection.remind_now(s, ids[shop])
                     elif action == "unknown":
                         onboarding.inbound_from_unknown(s, "simulator", "081234567890", text)
                 events.drain(500)

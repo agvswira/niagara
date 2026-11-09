@@ -10,6 +10,8 @@ liked; earlier a dark approval tool), with Niagara's own colour and motif. Dial 
   decision. The motif is the **flow rail**, a thin vertical line with nodes that connects steps. It appears
   wherever work moves through stages: the agent chain on an order, the trace of one agent run, the chat side
   panel. It is never used as decoration elsewhere.
+- **Logo.** A lowercase n in ink with the Kas masuk flower in place of the full stop: the moment the money lands
+  is where the flow ends. The n follows the theme (ink on light, near-white on dark); the flower stays green.
 - **Accent.** One deep blue-green (teal), the colour of falling water. Used for the primary action on a screen,
   the active nav item, and the flow rail. Nowhere else (the chat simulator uses its own WhatsApp-like greens).
 - **Agent mascots.** Each of the six agents is one flat shape with two dot eyes, no props: Intake a blue circle,
@@ -35,7 +37,9 @@ liked; earlier a dark approval tool), with Niagara's own colour and motif. Dial 
 | `--accent-ink` | #08695F | #5CD4C5 | accent text and links |
 
 Light is the default because the people using it work in an office in daytime and the latest reference the team
-chose is light; dark stays complete and is one click away.
+chose is light; dark stays complete and is one click away. The switch under the sidebar is a small track with a
+sun on the left and a moon on the right; the knob slides over the active mode and carries its symbol, so the state
+reads without a label.
 
 Contrast was checked with the antislop contrast script; every text pairing passes 4.5:1, borders pass 3:1.
 

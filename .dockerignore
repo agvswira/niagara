@@ -8,3 +8,5 @@ media/
 proposal/
 eval/results/latest-*.json
 eval/results/run-*.log
+docs/
+tests/

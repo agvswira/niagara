@@ -1336,7 +1336,11 @@ function closeMenu() {
 function setupChrome() {
   const themeBtn = $("#theme");
   const currentTheme = () => document.documentElement.dataset.theme || "light";
-  const label = () => { themeBtn.textContent = currentTheme() === "dark" ? "Tema terang" : "Tema gelap"; };
+  const label = () => {
+    const dark = currentTheme() === "dark";
+    themeBtn.setAttribute("aria-checked", String(dark));
+    themeBtn.title = dark ? "Ganti ke tema terang" : "Ganti ke tema gelap";
+  };
   label();
   themeBtn.addEventListener("click", () => {
     const next = currentTheme() === "dark" ? "light" : "dark";
