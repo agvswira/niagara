@@ -134,11 +134,17 @@ python -m pytest -q
 
 ## Deploy
 
-Demo publik berjalan di Hugging Face Spaces. Space-nya hanya berisi dua file dari `deploy/huggingface/`: `Dockerfile` yang mengambil kode dari repo ini saat build, dan `README.md` berisi konfigurasi Space. API key dan kata sandi demo diisi lewat Settings, Variables and secrets: `OPENAI_COMPAT_API_KEY`, `GEMINI_API_KEY`, `NIAGARA_DEMO_PASSWORD`. Setelah push ke GitHub, jalankan Factory rebuild di Space supaya commit terbaru ikut terpasang.
+Demo publik berjalan di VPS dengan Docker Compose (`deploy/vps/`): aplikasi di belakang Caddy, yang mengurus sertifikat HTTPS sendiri. Di VPS: pasang Docker, clone repo ini, salin `.env.example` menjadi `.env` lalu isi key, kata sandi demo, dan `NIAGARA_DOMAIN`, kemudian jalankan dari folder repo:
 
-Repo ini juga punya `Dockerfile` dan `render.yaml` untuk Render (New, Blueprint, pilih repo ini, lalu isi key yang sama).
+```bash
+docker compose --env-file .env -f deploy/vps/docker-compose.yml up -d --build
+```
 
-Di kedua tempat, disk paket gratis tidak permanen, jadi data simulasi kembali ke awal setiap kali layanan restart. Untuk data permanen, arahkan `DATABASE_URL` ke Postgres (misalnya Supabase).
+Untuk memperbarui: `git pull`, lalu jalankan perintah yang sama.
+
+Repo ini juga punya `render.yaml` untuk Render (New, Blueprint, pilih repo ini, lalu isi key yang sama).
+
+Di VPS, data simulasi kembali ke awal setiap kali image dibangun ulang; di paket gratis Render, setiap kali layanan restart. Untuk data permanen, arahkan `DATABASE_URL` ke Postgres (misalnya Supabase).
 
 ## Struktur
 

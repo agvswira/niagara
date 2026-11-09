@@ -1,0 +1,4 @@
+{$NIAGARA_DOMAIN} {
+	encode gzip
+	reverse_proxy niagara:8000
+}

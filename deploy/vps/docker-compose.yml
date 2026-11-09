@@ -1,0 +1,32 @@
+# Niagara on a single VPS: the app behind Caddy, which gets and renews the HTTPS certificate on its own.
+# Run from the repo root:
+#   docker compose --env-file .env -f deploy/vps/docker-compose.yml up -d --build
+# NIAGARA_DOMAIN in .env is the public hostname, for example 203-0-113-5.sslip.io when there is no domain.
+services:
+  niagara:
+    build: ../..
+    env_file: ../../.env
+    environment:
+      PORT: "8000"
+    expose:
+      - "8000"
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2
+    depends_on:
+      - niagara
+    environment:
+      NIAGARA_DOMAIN: ${NIAGARA_DOMAIN:?isi NIAGARA_DOMAIN di .env}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:
