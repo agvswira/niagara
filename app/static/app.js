@@ -28,9 +28,14 @@ const ICONS = {
   clock: "M10 3a7 7 0 100 14 7 7 0 000-14zM10 6.5V10l2.5 1.5",
   tick: "M3.5 10.5l3.5 3.5 9-9",
   clip: "M13.5 6.5l-5.6 5.6a1.6 1.6 0 002.3 2.3l6-6a3.2 3.2 0 00-4.5-4.5l-6.1 6.1a4.8 4.8 0 006.8 6.8l4.6-4.6",
-  send: "M3.5 10h11M10 4.5l5.5 5.5-5.5 5.5",
+  send: "M3 10.5L17 4l-5 13-2.4-5.6L3 10.5zM9.6 11.4L17 4",
   back: "M12.5 4.5L7 10l5.5 5.5",
   plus: "M10 4.5v11M4.5 10h11",
+  dtick: "M1 10.5l3.4 3.4L11.5 6M7.6 13.4l.5.5 7.4-8",
+  search: "M8.5 3a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM12.6 12.6L17 17",
+  newchat: "M4 4.5h12v9H8.5L4 16.5v-12zM10 6.8v4.4M7.8 9h4.4",
+  note: "M5.5 3h9v14h-9zM8 7h4M8 10h4M8 13h2.5",
+  money: "M3 5.5h14v9H3zM10 8a2 2 0 100 4 2 2 0 000-4zM5.5 10h.1M14.4 10h.1",
 };
 function icon(name, size) {
   const s = document.createElementNS(SVGNS, "svg");
@@ -47,6 +52,20 @@ function icon(name, size) {
   p.setAttribute("stroke-linecap", "round");
   p.setAttribute("stroke-linejoin", "round");
   s.append(p);
+  return s;
+}
+
+// default profile photo for contacts without a picture, as chat apps show it
+function waAvatar(label) {
+  const s = document.createElementNS(SVGNS, "svg");
+  s.setAttribute("viewBox", "0 0 212 212");
+  s.setAttribute("class", "wa-avatar");
+  s.setAttribute("aria-hidden", "true");
+  s.setAttribute("focusable", "false");
+  s.innerHTML = '<circle cx="106" cy="106" r="106" class="wa-avatar-bg"/>'
+    + '<circle cx="106" cy="84" r="40" class="wa-avatar-fg"/>'
+    + '<path d="M38 186c8-38 36-60 68-60s60 22 68 60a106 106 0 0 1-136 0z" class="wa-avatar-fg"/>';
+  if (label) s.setAttribute("data-label", label);
   return s;
 }
 
@@ -707,61 +726,95 @@ function customerInfo(data) {
   ];
 }
 
+const SIM_NOTE = "Ini simulator Niagara, bukan WhatsApp asli. Tampilannya sengaja dibuat mirip WhatsApp supaya alurnya mudah dibayangkan: Anda mengetik sebagai pemilik toko, dan balasan datang dari agen Niagara. Di lapangan, pesan yang sama akan masuk lewat nomor WhatsApp Business distributor.";
+const CHAT_FILTERS = [["semua", "Semua"], ["tagihan", "Ada tagihan"], ["baru", "Belum diverifikasi"]];
+
 async function viewChat() {
   app.customers = await api("/api/customers");
   if (!app.customerId || !app.customers.some((x) => x.id === app.customerId)) app.customerId = app.customers[0].id;
   const data = await api(`/api/customers/${app.customerId}/conversation`);
   const c = data.customer;
   const pick = (id) => { location.hash = `#/percakapan/${id}`; };
+  const filter = app.chatFilter || "semua";
 
-  const contacts = el("div", { class: "contacts" }, app.customers.map((x) => {
+  // ---- chat list ----
+  const contacts = el("div", { class: "contacts" });
+  const empty = el("p", { class: "contacts-empty", hidden: true }, "Tidak ada toko yang cocok.");
+  const applyFilter = () => {
+    const q = (search.value || "").trim().toLowerCase();
+    let shown = 0;
+    contacts.querySelectorAll(".contact").forEach((b) => {
+      const okFilter = filter === "semua" || (filter === "tagihan" && b.dataset.owes === "1") || (filter === "baru" && b.dataset.unverified === "1");
+      b.hidden = !(okFilter && (!q || b.dataset.name.includes(q)));
+      if (!b.hidden) shown += 1;
+    });
+    empty.hidden = shown > 0;
+  };
+  app.customers.forEach((x) => {
     const last = x.last_message;
-    const sub = x.verified === false ? "Belum diverifikasi" : last ? `${last.direction === "in" ? "" : "Niagara: "}${last.text}` : `${x.area} · tier ${x.tier}`;
-    return el("button", { type: "button", class: "contact", "aria-current": x.id === app.customerId ? "true" : null,
-      dataset: { name: x.name.toLowerCase() }, onclick: () => pick(x.id) },
-      el("span", { class: "avatar", "aria-hidden": "true" }, initials(x.name)),
-      el("span", { style: "min-width:0" }, el("span", { class: "contact-name", style: "display:block" }, x.name),
-        el("span", { class: "contact-last", style: "display:block" }, sub)),
-      el("span", { class: "contact-time" }, last ? jam(last.at) : ""));
-  }));
+    const fromNiagara = last && last.direction === "out";
+    const preview = x.verified === false && !last ? "Belum diverifikasi" : last ? last.text : `${x.area} · tier ${x.tier}`;
+    contacts.append(el("button", { type: "button", class: "contact", "aria-current": x.id === app.customerId ? "true" : null,
+      dataset: { name: x.name.toLowerCase(), owes: x.outstanding > 0 ? "1" : "0", unverified: x.verified === false ? "1" : "0" },
+      onclick: () => pick(x.id) },
+      waAvatar(),
+      el("span", { class: "contact-body" },
+        el("span", { class: "contact-top" }, el("span", { class: "contact-name" }, x.name),
+          el("span", { class: "contact-time" }, last ? jam(last.at) : "")),
+        el("span", { class: "contact-bottom" },
+          el("span", { class: "contact-last" },
+            fromNiagara ? el("span", { class: "ticks", style: "display:inline-flex;flex:none;color:var(--wa-tick)" }, icon("dtick", 16)) : null,
+            el("span", {}, preview)),
+          x.verified === false ? el("span", { class: "contact-flag" }, "Baru") : null))));
+  });
+  contacts.append(empty);
   const search = el("input", { type: "search", id: "contact-search", placeholder: "Cari toko", "data-keep": "contact-search",
-    "aria-label": "Cari toko", oninput: (e) => {
-      const q = e.target.value.trim().toLowerCase();
-      contacts.querySelectorAll(".contact").forEach((b) => { b.hidden = q && !b.dataset.name.includes(q); });
-    } });
+    "aria-label": "Cari toko", oninput: applyFilter });
+  const filters = el("div", { class: "wa-filters", role: "group", "aria-label": "Saring daftar chat" },
+    CHAT_FILTERS.map(([key, label]) => el("button", { type: "button", class: "wa-filter", "aria-pressed": String(filter === key),
+      onclick: () => { app.chatFilter = key; render(false); } }, label)));
+  applyFilter();
 
   const list = el("section", { class: "chat-list", "aria-labelledby": "list-title" },
     el("div", { class: "chat-list-head" },
-      el("div", { class: "row" }, el("h2", { id: "list-title" }, "Simulator chat"),
-        el("button", { type: "button", class: "btn btn-small", onclick: unknownNumberDialog }, icon("plus", 16), "Nomor baru")),
-      search),
+      el("div", { class: "row" },
+        el("h2", { id: "list-title" }, "Chat", el("span", { class: "sim-tag" }, "Simulator, bukan WhatsApp asli")),
+        el("button", { type: "button", class: "icon-btn", title: "Simulasikan pesan dari nomor baru", "aria-label": "Simulasikan pesan dari nomor baru",
+          onclick: unknownNumberDialog }, icon("newchat", 22))),
+      el("div", { class: "wa-search" }, icon("search", 18), search),
+      filters),
     contacts);
 
-  // thread with day separators
-  const thread = el("div", { class: "thread", "aria-label": `Percakapan dengan ${c.name}`, tabindex: "0" });
+  // ---- thread ----
+  const thread = el("div", { class: "thread", "aria-label": `Percakapan dengan ${c.name}`, tabindex: "0" },
+    el("p", { class: "wa-note" }, SIM_NOTE));
   let lastDay = "";
-  if (!data.messages.length) {
-    thread.append(el("p", { class: "day-sep" }, `Belum ada pesan. Tulis sebagai ${c.owner} di bawah.`));
-  }
+  let lastDir = "";
   data.messages.forEach((m) => {
     const day = m.at.slice(0, 10);
-    if (day !== lastDay) { thread.append(el("p", { class: "day-sep" }, tgl(m.at))); lastDay = day; }
+    if (day !== lastDay) { thread.append(el("p", { class: "day-sep" }, tgl(m.at))); lastDay = day; lastDir = ""; }
     const out = m.direction === "out";
-    thread.append(el("div", { class: `bubble ${out ? "out" : "in"}` },
+    const tail = (out ? "out" : "in") !== lastDir;
+    lastDir = out ? "out" : "in";
+    const spacer = el("span", { class: "meta-spacer", "aria-hidden": "true", style: `--meta-w:${out ? 64 : 44}px` });
+    const intent = !out && m.intent
+      ? el("span", { class: "intent", title: "Cara agen membaca pesan ini" }, `dibaca agen: ${INTENT[m.intent] || m.intent.replaceAll("_", " ")}`, spacer)
+      : null;
+    thread.append(el("div", { class: `bubble ${out ? "out" : "in"}${tail ? " tail" : ""}` },
       el("span", { class: "sr-only" }, out ? "Niagara: " : `${c.owner}: `),
       m.media_url && m.kind === "image" ? el("img", { src: m.media_url, alt: "Foto yang dikirim pelanggan", width: "300", height: "220", loading: "lazy" }) : null,
       m.kind === "audio" && m.media_url ? el("audio", { controls: true, src: m.media_url }) : null,
       m.text || null,
-      el("span", { class: "bubble-meta" },
-        !out && m.intent ? el("span", { class: "intent", title: "Cara agen membaca pesan ini" }, `dibaca: ${INTENT[m.intent] || m.intent.replaceAll("_", " ")}`) : null,
-        jam(m.at),
-        out ? el("span", { title: "Terkirim", style: "display:inline-flex" }, icon("tick", 14), el("span", { class: "sr-only" }, "terkirim")) : null)));
+      intent || spacer,
+      el("span", { class: "bubble-meta" }, jam(m.at),
+        out ? el("span", { class: "ticks", title: "Terkirim" }, icon("dtick", 16), el("span", { class: "sr-only" }, "terkirim")) : null)));
   });
+  if (!data.messages.length) thread.append(el("p", { class: "day-sep" }, `Belum ada pesan. Tulis sebagai ${c.owner} di bawah.`));
   const live = el("p", { class: "sr-only", "aria-live": "polite" },
     data.messages.length ? `Pesan terakhir dari ${data.messages[data.messages.length - 1].direction === "out" ? "Niagara" : c.owner}` : "");
 
-  // composer
-  const input = el("textarea", { id: "composer", "data-keep": "composer", rows: "1", placeholder: `Tulis sebagai ${c.owner}`,
+  // ---- composer ----
+  const input = el("textarea", { id: "composer", "data-keep": "composer", rows: "1", placeholder: "Ketik pesan",
     oninput: () => {
       input.style.height = "auto";
       input.style.height = `${Math.min(input.scrollHeight + 2, 140)}px`;
@@ -800,33 +853,58 @@ async function viewChat() {
     } catch (e) { toast(e.message); }
   };
 
+  // attach menu, opened from the plus button like a chat app's attachment picker
+  const attachBtn = el("button", { type: "button", class: "icon-btn", "aria-label": "Lampirkan", title: "Lampirkan",
+    "aria-expanded": "false", "aria-controls": "attach-menu" }, icon("plus", 24));
+  const closeMenu = () => { menu.hidden = true; attachBtn.setAttribute("aria-expanded", "false"); };
+  const menu = el("div", { class: "attach-menu", id: "attach-menu", hidden: true, role: "group", "aria-label": "Lampiran",
+    onkeydown: (e) => { if (e.key === "Escape") { closeMenu(); attachBtn.focus(); } } },
+    el("button", { type: "button", onclick: () => { closeMenu(); fileInput.click(); } }, icon("clip", 20), "Foto atau rekaman suara dari perangkat"),
+    el("button", { type: "button", onclick: () => { closeMenu(); send("nota"); } }, icon("note", 20), "Kirim teks di kolom sebagai foto nota"),
+    el("button", { type: "button", disabled: c.outstanding > 0 ? null : true, onclick: () => { closeMenu(); pay(); } }, icon("money", 20),
+      c.outstanding > 0 ? "Bayar tagihan dan kirim bukti transfer" : "Bayar tagihan (tidak ada tagihan)"));
+  attachBtn.addEventListener("click", () => {
+    const open = menu.hidden;
+    menu.hidden = !open;
+    attachBtn.setAttribute("aria-expanded", String(open));
+    if (open) menu.querySelector("button").focus();
+  });
+
   const composer = el("div", { class: "composer" },
     el("div", { class: "chips", role: "group", "aria-label": "Contoh pesan" }, EXAMPLES.map(([label, text]) =>
       el("button", { type: "button", class: "chip", title: text, onclick: () => { input.value = text; input.dispatchEvent(new Event("input")); input.focus(); } }, label))),
-    el("div", { class: "compose-row" },
-      el("label", { for: "upload", class: "icon-btn", title: "Lampirkan foto atau rekaman suara", role: "button", tabindex: "0",
-        onkeydown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fileInput.click(); } } },
-        icon("clip"), el("span", { class: "sr-only" }, "Lampirkan foto atau rekaman suara")), fileInput,
+    el("div", { class: "compose-row" }, menu, attachBtn, fileInput,
       el("label", { for: "composer", class: "sr-only" }, `Pesan sebagai ${c.owner}`), input,
-      el("button", { type: "button", class: "send-btn", "aria-label": "Kirim pesan", onclick: () => send("message") }, icon("send", 20))),
-    el("div", { class: "compose-tools" },
-      el("button", { type: "button", class: "btn btn-ghost btn-small", onclick: () => send("nota") }, "Kirim teks sebagai foto nota"),
-      el("button", { type: "button", class: "btn btn-ghost btn-small", onclick: pay, disabled: c.outstanding > 0 ? null : true }, "Bayar tagihan"),
-      el("span", { class: "compose-hint" }, "Enter kirim, Shift+Enter baris baru")));
+      el("button", { type: "button", class: "send-btn", "aria-label": "Kirim pesan", title: "Kirim", onclick: () => send("message") }, icon("send", 24))),
+    el("p", { class: "compose-hint" }, `Anda menulis sebagai ${c.owner}. Enter untuk kirim, Shift+Enter untuk baris baru.`));
 
   const pane = el("section", { class: "chat-pane", "aria-labelledby": "chat-title" },
     el("div", { class: "chat-head" },
-      el("button", { type: "button", class: "icon-btn back-btn", "aria-label": "Kembali ke daftar toko", onclick: () => { location.hash = "#/percakapan"; } }, icon("back")),
-      el("span", { class: "avatar lg", "aria-hidden": "true" }, initials(c.name)),
+      el("button", { type: "button", class: "icon-btn back-btn", "aria-label": "Kembali ke daftar chat", onclick: () => { location.hash = "#/percakapan"; } }, icon("back")),
+      waAvatar(),
       el("div", { class: "chat-head-text" }, el("h2", { id: "chat-title", class: "chat-head-name" }, c.name),
-        el("p", { class: "chat-head-sub" }, `Anda menulis sebagai ${c.owner}`)),
-      el("button", { type: "button", class: "btn btn-small info-btn", onclick: () => openSheet(["Percakapan", c.name], `Info ${c.name}`, customerInfo(data)) }, "Info toko")),
+        el("p", { class: "chat-head-sub" }, `${c.owner} · ${c.area} · simulator chat`)),
+      el("button", { type: "button", class: "icon-btn info-btn", "aria-label": "Info kontak", title: "Info kontak",
+        "aria-pressed": String(Boolean(app.chatInfo)),
+        onclick: () => {
+          // wide screens toggle the side column like a chat app; narrow screens use the sheet
+          if (matchMedia("(min-width: 1281px)").matches) { app.chatInfo = !app.chatInfo; render(false); }
+          else openSheet(["Percakapan", c.name], `Info ${c.name}`, customerInfo(data));
+        } }, icon("info", 22))),
     thread, live, composer);
 
-  return el("div", {},
-    pageHead("Percakapan", "Kirim pesan sebagai pemilik toko, lalu lihat agen membaca, mencocokkan, dan memutuskan. Di lapangan pesan ini datang dari WhatsApp."),
-    el("div", { class: `chat-app${app.chatOpen ? " has-chat" : ""}` }, list, pane,
-      el("aside", { class: "chat-info", "aria-label": `Info ${c.name}` }, customerInfo(data))));
+  const info = el("aside", { class: "chat-info", "aria-label": `Info kontak ${c.name}` },
+    el("div", { class: "chat-info-head" },
+      el("button", { type: "button", class: "icon-btn", "aria-label": "Tutup info kontak", onclick: () => { app.chatInfo = false; render(false); } },
+        icon("cross", 20)), "Info kontak"),
+    el("div", { class: "chat-info-hero" },
+      waAvatar(),
+      el("p", { class: "name" }, c.name), el("p", { class: "sub" }, `${c.owner} · ${c.area}, tier ${c.tier}`)),
+    customerInfo(data));
+
+  return el("div", { class: "chat-page" },
+    pageHead("Percakapan", "Kirim pesan sebagai pemilik toko, lalu lihat agen membaca, mencocokkan, dan memutuskan. Layar ini simulator yang dibuat mirip WhatsApp, bukan aplikasi WhatsApp asli."),
+    el("div", { class: `chat-app${app.chatOpen ? " has-chat" : ""}${app.chatInfo ? " show-info" : ""}` }, list, pane, app.chatInfo ? info : null));
 }
 
 // ---------- view: order ----------
@@ -1116,6 +1194,14 @@ function setupChrome() {
     if (e.key === "Escape" && $("#sidebar").classList.contains("open")) { closeMenu(); $("#menu-toggle").focus(); }
   });
   $(".content").addEventListener("click", () => { if ($("#sidebar").classList.contains("open")) closeMenu(); });
+  // one listener for the chat attach menu, which is rebuilt on every refresh
+  document.addEventListener("click", (e) => {
+    const menu = $("#attach-menu");
+    const btn = document.querySelector('[aria-controls="attach-menu"]');
+    if (!menu || menu.hidden || menu.contains(e.target) || (btn && btn.contains(e.target))) return;
+    menu.hidden = true;
+    if (btn) btn.setAttribute("aria-expanded", "false");
+  });
   $("#sheet-close").addEventListener("click", () => $("#sheet").close());
   $("#sheet").addEventListener("click", (e) => { if (e.target === e.currentTarget) e.currentTarget.close(); });
   $("#modal").addEventListener("click", (e) => { if (e.target === e.currentTarget) e.currentTarget.close(); });

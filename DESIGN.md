@@ -11,7 +11,7 @@ liked), with Niagara's own colour and motif. Dial ENERGY 2 / RHYTHM 2 / MOTION 2
   wherever work moves through stages: the agent chain on an order, the trace of one agent run, the chat side
   panel. It is never used as decoration elsewhere.
 - **Accent.** One deep blue-green (teal), the colour of falling water. Used for the primary action on a screen,
-  the active nav item, the flow rail, and Niagara's own chat bubbles. Nowhere else.
+  the active nav item, and the flow rail. Nowhere else (the chat simulator uses its own WhatsApp-like greens).
 - **Status colours** are functional, not palette: amber = waiting on a person, red = blocked or failed,
   green = done. They appear only as tinted pills, bars and icons, always with a text label.
 
@@ -28,7 +28,6 @@ liked), with Niagara's own colour and motif. Dial ENERGY 2 / RHYTHM 2 / MOTION 2
 | `--muted` | #8D9AA2 | #59666D | secondary text (min 5.3:1 on surfaces) |
 | `--accent` | #2FC2B0 | #0A7F73 | primary buttons, rail, active nav |
 | `--accent-ink` | #5CD4C5 | #08695F | accent text and links |
-| `--bubble-out` | #10322F | #DDF2EF | Niagara's chat bubbles |
 
 Contrast was checked with the antislop contrast script; every text pairing passes 4.5:1, borders pass 3:1.
 
@@ -47,8 +46,11 @@ Contrast was checked with the antislop contrast script; every text pairing passe
 - **Meja kerja** is built around one decision: what needs a person now. A three-part summary of real counts,
   then the decision queue as a table, then agent activity. Opening a row slides in a side sheet with the reason,
   the rule checks, the agent chain and the action buttons, so the list stays in view.
-- **Percakapan** borrows the shape people already know from chat apps (contact list, bubbles, composer at the
-  bottom) without copying any one app's colours, icons or wallpaper. It is labelled "Simulator chat".
+- **Percakapan** is the one screen that deliberately looks like WhatsApp Desktop (layout and colours taken from a
+  community Figma recreation), because the team wants viewers to picture the real channel at a glance. It says it is
+  a simulator in three places: the list heading, the chat subtitle, and a pinned note in the thread where WhatsApp
+  shows its encryption notice. No WhatsApp logo, icons, wallpaper art, or photos are copied; contacts use a plain
+  silhouette as the default profile photo. Greys were nudged so every text pairing still passes 4.5:1.
 - **Numbers shown are real.** Every count and rupiah value comes from the API. No invented deltas or trends.
 - Radii: 6px controls, 10px panels, 999px only for status pills and avatars.
 
@@ -59,5 +61,6 @@ bottom, rows get a hover tint. Everything stops under `prefers-reduced-motion`.
 
 ## What we do not do
 
-No gradients, glow, glass, background patterns, emoji, stock avatars or photos of people (initials only),
-fake statistics, or a copy of WhatsApp or the reference product.
+No gradients, glow, glass, background patterns, emoji, stock avatars or photos of people (initials, or the
+silhouette in the chat simulator), fake statistics, or a copy of the reference product. The chat simulator mimics
+WhatsApp on purpose and always labels itself as a simulator.
