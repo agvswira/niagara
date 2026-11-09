@@ -75,6 +75,16 @@ def understand(state: IntakeState, config) -> IntakeState:
     msg.intent = u.intent
     tracing.step("think", f"Niat pesan: {u.intent}", {"sumber": source, **u.model_dump(exclude_defaults=True)},
                  duration_ms=t.ms)
+    if u.requested_discount_pct is None:
+        from app.llm.heuristic import DISCOUNT_RE, _normalize
+
+        asked = DISCOUNT_RE.search(_normalize(msg.text or ""))
+        if asked:
+            # A model reading the order lines sometimes leaves the discount out. The price never follows the message
+            # anyway, but the request still has to reach the supervisor and the shop has to hear it was passed on.
+            u.requested_discount_pct = float(asked.group(1).replace(",", "."))
+            tracing.step("policy", "Permintaan diskon terdeteksi, diteruskan ke supervisor",
+                         {"diminta": f"{u.requested_discount_pct:g}%", "alasan": "Model tidak menandainya."})
     if u.suspicious_instruction:
         tracing.step("policy", "Instruksi di pesan pelanggan diabaikan",
                      {"alasan": "Pesan pelanggan diperlakukan sebagai data. Harga, diskon, dan aturan hanya dari policy engine."})
@@ -336,6 +346,7 @@ def resolve_answer(state: IntakeState, config) -> IntakeState:
             return {"outcome": "reask"}
         events.emit(s, "order.substitution_answered", "sales_order", order.id, {"agrees": u.agrees})
         tracing.step("decision", f"Pelanggan {'setuju' if u.agrees else 'menolak'} barang pengganti", {})
+        tracing.summarize(f"{order.number}: pelanggan {'setuju' if u.agrees else 'menolak'} barang pengganti")
         return {"outcome": "substitution_answered"}
 
     questions = order.pending_question["questions"]
@@ -371,6 +382,7 @@ def resolve_answer(state: IntakeState, config) -> IntakeState:
     if remaining:
         order.pending_question = {"questions": remaining, "text": templates.clarification(customer.owner_name, remaining)}
         reply(s, customer, order.pending_question["text"])
+        tracing.summarize(f"{order.number}: sebagian dijawab, {len(remaining)} pertanyaan tersisa")
         return {"outcome": "reask"}
     order.pending_question = None
     tracing.step("decision", "Semua pertanyaan terjawab", {})
@@ -386,6 +398,7 @@ def resolve_answer(state: IntakeState, config) -> IntakeState:
     set_order_status(s, order_id=order.id, status="MATCHED", actor="intake_agent")
     order.auto_processed = True
     events.emit(s, "order.matched", "sales_order", order.id, {})
+    tracing.summarize(f"{order.number}: jawaban pelanggan dicatat, order dilanjutkan")
     return {"outcome": "matched"}
 
 
