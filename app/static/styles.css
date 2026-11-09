@@ -147,10 +147,10 @@ textarea { resize: vertical; }
   background: var(--surface); border-right: 1px solid var(--line);
 }
 .side-brand { display: flex; align-items: center; gap: 12px; padding: 0 6px; }
-.brand-mark {
-  display: grid; place-items: center; flex: none; width: 38px; height: 38px; border-radius: 11px;
-  background: var(--accent); color: var(--on-accent); font-weight: 800; font-size: 1.125rem;
-}
+.brand-mark { display: grid; place-items: center; flex: none; width: 40px; height: 40px; color: var(--ink); border-radius: 10px; }
+.brand-mark .logo { width: 38px; height: auto; }
+.mobile-brand { display: inline-flex; align-items: center; gap: 8px; color: var(--ink); text-decoration: none; }
+.mobile-brand .logo { width: 30px; height: auto; }
 .side-brand-text { display: grid; min-width: 0; }
 .company { color: var(--muted); font-size: 0.78rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .side-nav { display: grid; gap: 2px; }

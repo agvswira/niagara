@@ -1,12 +1,13 @@
 import csv
 import io
+import os
 import threading
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -743,6 +744,30 @@ def sim_unknown(body: UnknownMessage) -> dict:
 
 
 @app.get("/")
+def landing() -> FileResponse:
+    return FileResponse(STATIC / "landing.html", headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/app")
 def index() -> FileResponse:
     # the shell must revalidate, otherwise a browser keeps pointing at old ?v= asset URLs after a release
     return FileResponse(STATIC / "index.html", headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/demo")
+def demo_login(request: Request):
+    """One click from the landing page into the app as the demo supervisor (its password is public in the README).
+
+    Set NIAGARA_DEMO_LOGIN=0 to turn this off on a real deployment.
+    """
+    if os.getenv("NIAGARA_DEMO_LOGIN", "1") == "0":
+        return RedirectResponse("/app", status_code=303)
+    with db.session_scope() as s:
+        user = s.query(User).filter_by(username="supervisor").first()
+        if user is None:
+            return RedirectResponse("/app", status_code=303)
+        token = auth.make_token(s, user.username)
+    resp = RedirectResponse("/app#/percakapan", status_code=303)
+    secure = request.headers.get("x-forwarded-proto", request.url.scheme) == "https"
+    resp.set_cookie(auth.COOKIE, token, httponly=True, samesite="lax", secure=secure, max_age=auth.SESSION_SECONDS)
+    return resp

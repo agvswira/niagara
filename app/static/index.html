@@ -4,28 +4,29 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Niagara · Meja kerja distributor</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500&display=swap">
   <link rel="preconnect" href="https://api.fontshare.com" crossorigin>
   <link rel="stylesheet" href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700,900&display=swap">
-  <link rel="stylesheet" href="/static/styles.css?v=28">
+  <link rel="stylesheet" href="/static/styles.css?v=29">
   <script>
     try { const t = localStorage.getItem("niagara-theme"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
   </script>
-  <script src="/static/app.js?v=27" defer></script>
+  <script src="/static/app.js?v=28" defer></script>
 </head>
 <body class="signed-out">
   <a class="skip" href="#main">Langsung ke isi</a>
 
   <header class="mobilebar">
-    <span class="wordmark">Niagara</span>
+    <a class="wordmark mobile-brand" href="/"><svg class="logo" viewBox="-1 -1 53 41" aria-hidden="true" focusable="false"><path fill="currentColor" d="M0 38V19a19 19 0 0 1 38 0v19H27.2V19a8.2 8.2 0 0 0-16.4 0v19z"/><g transform="translate(45.4 33.5) scale(0.29) translate(-20 -20)"><g fill="#10B981"><circle cx="20" cy="11" r="8.5"/><circle cx="29" cy="20" r="8.5"/><circle cx="20" cy="29" r="8.5"/><circle cx="11" cy="20" r="8.5"/><circle cx="20" cy="20" r="9"/></g><ellipse cx="16" cy="20" rx="2.6" ry="3.6" fill="#0F172A"/><ellipse cx="24" cy="20" rx="2.6" ry="3.6" fill="#0F172A"/></g></svg>Niagara</a>
     <button type="button" class="btn btn-ghost" id="menu-toggle" aria-expanded="false" aria-controls="sidebar">Menu</button>
   </header>
 
   <aside class="sidebar" id="sidebar">
     <div class="side-brand">
-      <span class="brand-mark" aria-hidden="true">N</span>
+      <a class="brand-mark" href="/" aria-label="Halaman Niagara"><svg class="logo" viewBox="-1 -1 53 41" aria-hidden="true" focusable="false"><path fill="currentColor" d="M0 38V19a19 19 0 0 1 38 0v19H27.2V19a8.2 8.2 0 0 0-16.4 0v19z"/><g transform="translate(45.4 33.5) scale(0.29) translate(-20 -20)"><g fill="#10B981"><circle cx="20" cy="11" r="8.5"/><circle cx="29" cy="20" r="8.5"/><circle cx="20" cy="29" r="8.5"/><circle cx="11" cy="20" r="8.5"/><circle cx="20" cy="20" r="9"/></g><ellipse cx="16" cy="20" rx="2.6" ry="3.6" fill="#0F172A"/><ellipse cx="24" cy="20" rx="2.6" ry="3.6" fill="#0F172A"/></g></svg></a>
       <div class="side-brand-text">
         <span class="wordmark">Niagara</span>
         <span class="company" id="company"></span>
@@ -70,7 +71,7 @@
       <p class="state-msg">Memuat Niagara…</p>
     </main>
     <footer class="foot">
-      <span>Prototipe GTNIC 2026 · semua pelanggan, produk, dan transaksi adalah data simulasi</span>
+      <span>Semua pelanggan, produk, dan transaksi di sini adalah data simulasi</span>
       <button type="button" class="btn btn-ghost btn-small" id="reset" hidden>Ulang data simulasi</button>
     </footer>
   </div>

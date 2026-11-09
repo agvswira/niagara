@@ -1420,7 +1420,9 @@ function showLogin() {
       el("p", { class: "muted", style: "margin-top:6px" }, "Akun demo: supervisor. Kata sandi demo tercantum di README repo.")),
     el("div", { class: "field" }, el("label", { for: "login-user" }, "Nama pengguna"), user),
     el("div", { class: "field" }, el("label", { for: "login-pass" }, "Kata sandi"), pass),
-    error, submit);
+    error, submit,
+    el("a", { class: "btn btn-block", href: "/demo" }, "Masuk sebagai supervisor demo"),
+    el("a", { class: "small", href: "/", style: "justify-self:center" }, "Kembali ke halaman Niagara"));
   $("#main").replaceChildren(form);
   user.focus();
 }
