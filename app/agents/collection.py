@@ -84,6 +84,8 @@ def daily_dunning(s: Session) -> dict:
             sent += 1
             for inv, st in items:
                 inv.collection_stage, inv.last_reminder_at = max(inv.collection_stage, st), now
+            # the agent works through the list one shop at a time, so reminders do not all carry the same minute
+            clock.advance(s, minutes=1 + cid % 3)
         if stage == 3:
             request_approval(s, "escalation", "customer", cid,
                              f"Tagihan {customer.name} lewat 30 hari. Rekomendasi: stop suplai dan minta sales berkunjung.",

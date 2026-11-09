@@ -266,3 +266,26 @@ def test_text_claimed_as_proof_by_llm_is_treated_as_a_claim():
 def test_heuristic_line_parsing(text, expected):
     lines, *_ = heuristic.parse_order_lines(text)
     assert [(ln.raw, ln.qty, ln.unit) for ln in lines] == expected
+
+
+def test_clock_runs_in_real_time_and_stops_at_closing():
+    from datetime import timedelta
+
+    from app import clock
+    from app.models import KV
+
+    with db.session_scope() as s:
+        clock.set_now(s, datetime(2026, 11, 9, 8, 0))
+        s.get(KV, "clock_anchor").value = (datetime.now() - timedelta(hours=2, minutes=5)).isoformat()
+        assert clock.now(s).strftime("%H.%M") == "10.05"
+        s.get(KV, "clock_anchor").value = (datetime.now() - timedelta(hours=30)).isoformat()
+        assert clock.now(s) == datetime(2026, 11, 9, 20, 0)
+
+
+def test_morning_reminders_do_not_share_one_timestamp():
+    with db.session_scope() as s:
+        sim.advance_days(s, 1)
+    events.drain()
+    with db.session_scope() as s:
+        stamps = {m.created_at for m in s.query(Message).filter_by(direction="out", intent="collection")}
+        assert len(stamps) > 1
