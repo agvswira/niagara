@@ -3,6 +3,7 @@ services:
     name: niagara
     runtime: docker
     plan: free
+    healthCheckPath: /api/auth/me
     envVars:
       - key: LLM_CHAIN
         value: compat,gemini
@@ -10,10 +11,14 @@ services:
         sync: false
       - key: OPENAI_COMPAT_MODEL
         value: openai/gpt-oss-120b
+      - key: OPENAI_COMPAT_REASONING_EFFORT
+        value: low
       - key: GEMINI_API_KEY
         sync: false
       - key: GEMINI_MODEL
         value: gemini-3.6-flash
+      - key: COMPANY_NAME
+        value: CV Maju Mundur Sejahtera
       - key: NIAGARA_DEMO_PASSWORD
         sync: false
       - key: NIAGARA_SECRET

@@ -1,0 +1,10 @@
+.git
+.env
+.claude
+.venv
+**/__pycache__
+*.db
+media/
+proposal/
+eval/results/latest-*.json
+eval/results/run-*.log
