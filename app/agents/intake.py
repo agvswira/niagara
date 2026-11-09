@@ -1,5 +1,6 @@
 """Intake Agent: reads every inbound message, works out what the customer wants, and turns orders into draft lines."""
 
+import re
 from datetime import timedelta
 from typing import Any, TypedDict
 
@@ -80,6 +81,9 @@ def understand(state: IntakeState, config) -> IntakeState:
     return {"u": u, "source": source}
 
 
+PAID_DONE_RE = re.compile(r"\b(sudah|udah|sdh|dah|telah|barusan|baru)\s+(saya\s+|aku\s+|kami\s+)?"
+                          r"(tf|trf|transfer|ditransfer|bayar|dibayar|lunas|lunasi)\b")
+
 TASK_NODE = {"bukti_bayar": "payment_proof", "jawab_pertanyaan": "resolve_answer", "ubah_order": "change_order",
              "order_baru": "build_lines", "janji_bayar": "promise", "klaim_bayar": "simple_reply",
              "tanya_status": "simple_reply", "komplain": "complaint", "lainnya": "simple_reply"}
@@ -101,9 +105,16 @@ def plan(state: IntakeState, config) -> IntakeState:
     msg = _session(config).get(Message, state["message_id"])
     from app.llm.heuristic import STATUS_RE, _normalize
 
-    if "tanya_status" not in tasks and STATUS_RE.search(_normalize(msg.text or "")):
+    text = _normalize(msg.text or "")
+    if "tanya_status" not in tasks and STATUS_RE.search(text):
         # A plain status question is easy to spot; do not let the model drop it from a busy message.
         tasks.append("tanya_status")
+    if not {"bukti_bayar", "klaim_bayar"} & set(tasks) and PAID_DONE_RE.search(text):
+        # Same for "sudah tf": a model reading a busy order message sometimes drops it, and then the shop is
+        # never asked for the proof. Handle it first, as the customer said it first.
+        tracing.step("policy", "Kalimat sudah bayar terdeteksi, ditangani sebagai klaim bayar",
+                     {"alasan": "Model tidak menandainya; tanpa ini pelanggan tidak diminta foto bukti."})
+        tasks.insert(0, "bukti_bayar" if msg.kind == "image" and u.payment_proof is not None else "klaim_bayar")
     if "bukti_bayar" in tasks and (msg.kind != "image" or u.payment_proof is None):
         # A proof is a photo. "Sudah tf ya" in plain text is only a claim, whatever the model called it.
         tracing.step("policy", "Tidak ada foto, dianggap klaim bayar, bukan bukti", {"jenis_pesan": msg.kind})
@@ -573,7 +584,13 @@ def simple_reply(state: IntakeState, config) -> IntakeState:
                                        | (SalesOrder.source_message_id != state["message_id"]))
         order = (q.filter(SalesOrder.status.in_(OPEN_ORDER_STATES)).order_by(SalesOrder.created_at.desc()).first()
                  or q.order_by(SalesOrder.created_at.desc()).first())
-        reply(s, customer, templates.order_status(owner, order) if order else templates.no_open_order(owner))
+        if order:
+            reply(s, customer, templates.order_status(owner, order))
+        elif s.query(SalesOrder).filter_by(customer_id=cid, source_message_id=state["message_id"]).first():
+            # nothing earlier to report, but this message did place an order: do not ask "mau order apa?"
+            reply(s, customer, templates.no_earlier_order(owner))
+        else:
+            reply(s, customer, templates.no_open_order(owner))
     elif current == "komplain":
         request_approval(s, "complaint", "message", state["message_id"], "Keluhan pelanggan perlu ditangani admin.",
                          {"text": s.get(Message, state["message_id"]).text})

@@ -224,6 +224,11 @@ def no_open_order(owner: str) -> str:
     return f"{owner}, belum ada pesanan aktif atas nama toko ini. Mau order apa hari ini?"
 
 
+def no_earlier_order(owner: str) -> str:
+    return (f"{owner}, sebelum pesanan ini belum ada pesanan lain yang masih berjalan."
+            f" Pesanan yang barusan sedang kami proses, rinciannya menyusul.")
+
+
 def complaint_ack(owner: str) -> str:
     return f"Maaf atas kendalanya, {owner}. Keluhan ini sudah kami teruskan ke admin, nanti dihubungi langsung."
 

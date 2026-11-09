@@ -334,3 +334,22 @@ def test_hold_message_says_how_much_to_pay_and_where():
     events.drain()
     paid = replies(6)[-1]
     assert "Semua tagihan sekarang lunas" in paid and "kami jadwalkan kirim" in paid
+
+
+def test_paid_claim_is_kept_when_the_model_drops_it():
+    from app.llm.providers import Provider
+
+    class DropsThePayment(Provider):
+        name = "lupa"
+
+        def generate(self, system, text, schema, media_path=None, kind="text"):
+            # what the real model returned during testing: the order and the status question, no payment claim
+            return schema.model_validate({"intent": "order_baru", "also_intents": ["tanya_status"],
+                                          "lines": [{"raw": "indomie goreng", "qty": 3, "unit": "dus"}]})
+
+    set_llm(LLMService(providers=[DropsThePayment()]))
+    say(1, "sudah tf ya mas, sekalian order indomie goreng 3 dus. pesanan kemarin kapan dikirim?")
+    texts = replies(1)
+    assert any("foto bukti" in t for t in texts)
+    assert not any("Mau order apa" in t for t in texts), "the same message placed an order"
+    assert last_order(1).status == "CONFIRMED"
