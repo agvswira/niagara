@@ -4,7 +4,7 @@ Tim agen AI untuk alur order-to-cash distributor B2B di Indonesia. Pelanggan (to
 
 Dibuat untuk GTNIC 2026, kategori AI Agent (Building Intelligent AI Agents for Enterprise Productivity).
 
-**Demo langsung:** https://niagara-demo.indonesiacentral.cloudapp.azure.com (masuk dengan akun demo `supervisor`).
+**Demo langsung:** https://niagara.web.id (masuk dengan akun demo `supervisor`).
 
 ## Masalah yang diselesaikan
 
