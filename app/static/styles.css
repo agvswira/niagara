@@ -48,8 +48,8 @@
 }
 
 :root {
-  /* Plus Jakarta Sans: drawn by an Indonesian foundry for Jakarta, clear figures for rupiah columns */
-  --font: "Plus Jakarta Sans", "Segoe UI", system-ui, sans-serif;
+  /* Satoshi: geometric like the reference, firm at large figure sizes and calm in small table text */
+  --font: "Satoshi", "Segoe UI", system-ui, sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
   --r-control: 10px;
   --r-panel: 16px;
@@ -279,14 +279,12 @@ body.signed-out .content { margin-left: 0; }
 .feed-day::after { content: ""; flex: 1; height: 1px; background: var(--line); order: 1; }
 .feed-day .n { order: 2; padding: 0 8px; border-radius: 999px; background: var(--surface-2); color: var(--muted); }
 .feed-list { list-style: none; margin: 0; padding: 0; }
-.feed-list > li { position: relative; display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 12px; }
-.feed-list > li::before { content: ""; position: absolute; left: 12px; top: 30px; bottom: -2px; width: 2px; background: var(--line); }
+.feed-list > li { position: relative; display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 10px; }
+.feed-list > li::before { content: ""; position: absolute; left: 16px; top: 42px; bottom: 0; width: 2px; background: var(--line); }
 .feed-list > li:last-child::before { display: none; }
-.feed-node {
-  position: relative; z-index: 1; display: grid; place-items: center; width: 26px; height: 26px; margin-top: 10px;
-  border-radius: 50%; background: var(--surface); border: 2px solid var(--accent); color: var(--accent-ink);
-}
-.feed-node.bad { border-color: var(--danger); color: var(--danger); }
+.feed-node { position: relative; z-index: 1; display: grid; place-items: center; width: 34px; height: 38px; margin-top: 4px; background: var(--surface); }
+.feed-node.bad { outline: 2px solid var(--danger); outline-offset: 1px; border-radius: 50%; }
+.mascot { display: block; flex: none; }
 .feed-item {
   display: grid; gap: 3px; width: 100%; padding: 9px 10px; margin: 2px 0 6px; text-align: left;
   border: 0; border-radius: 12px; background: transparent; color: var(--ink);
@@ -297,8 +295,8 @@ body.signed-out .content { margin-left: 0; }
 .feed-time { flex: none; font-size: 0.72rem; color: var(--muted); }
 .feed-text { font-size: 0.8125rem; color: var(--muted); line-height: 1.45; }
 .feed-meta { display: flex; align-items: center; gap: 8px; margin-top: 4px; font-size: 0.75rem; color: var(--muted); }
-.agent-chip { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--accent-soft); color: var(--accent-ink); font-size: 0.62rem; font-weight: 800; }
-.feed-more { display: inline-flex; align-items: center; gap: 6px; margin: 2px 0 4px 38px; min-height: 32px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; color: var(--accent-ink); font-size: 0.8125rem; font-weight: 600; }
+.agent-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.feed-more { display: inline-flex; align-items: center; gap: 6px; margin: 2px 0 4px 44px; min-height: 32px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; color: var(--accent-ink); font-size: 0.8125rem; font-weight: 600; }
 .feed-more:hover { background: var(--accent-soft); }
 
 /* ---------- side sheet ---------- */
@@ -324,6 +322,7 @@ body.signed-out .content { margin-left: 0; }
 .hero { display: grid; gap: 6px; }
 .hero-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
 .hero-title { font-size: 1.125rem; font-weight: 600; }
+.hero-agent { display: flex; align-items: center; gap: 12px; }
 .hero-sub { color: var(--muted); font-size: 0.8125rem; }
 .hero-amount { font-size: 1.875rem; font-weight: 600; letter-spacing: -0.01em; }
 .hero-amount small { font-size: 0.8125rem; color: var(--muted); font-weight: 500; margin-left: 8px; }
@@ -356,9 +355,11 @@ body.signed-out .content { margin-left: 0; }
 
 /* ---------- flow rail: the Niagara motif ---------- */
 .rail { list-style: none; margin: 0; padding: 0; display: grid; }
-.rail > li { position: relative; display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 12px; padding-bottom: 16px; }
+.rail > li { position: relative; display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 12px; padding-bottom: 16px; }
 .rail > li:last-child { padding-bottom: 0; }
-.rail > li::before { content: ""; position: absolute; left: 10px; top: 20px; bottom: 0; width: 2px; background: var(--line); }
+.rail > li::before { content: ""; position: absolute; left: 13px; top: 32px; bottom: 0; width: 2px; background: var(--line); }
+.rail-mascot { position: relative; z-index: 1; display: grid; place-items: center; width: 28px; height: 32px; background: var(--surface); }
+.rail-mascot.bad { outline: 2px solid var(--danger); outline-offset: 1px; border-radius: 50%; }
 .rail > li:last-child::before { display: none; }
 .rail-node {
   position: relative; z-index: 1; width: 22px; height: 22px; border-radius: 50%;

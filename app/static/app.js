@@ -55,6 +55,38 @@ function icon(name, size) {
   return s;
 }
 
+// Agent mascots: one flat shape with two dot eyes per agent. Shape and colour tell agents apart at a glance
+// in the feed and the agent chain; the agent's name is always written next to it.
+const MASCOT = {
+  intake: { color: "#3B82F6", role: "membaca pesan pelanggan", eyes: [15.5, 24.5, 20],
+    body: '<circle cx="20" cy="20" r="16"/>' },
+  fulfillment: { color: "#F59E0B", role: "mengurus stok dan pengiriman", eyes: [15.5, 24.5, 20],
+    body: '<rect x="4.5" y="4.5" width="31" height="31" rx="9"/>' },
+  credit: { color: "#8B5CF6", role: "memeriksa harga dan kredit", eyes: [15.5, 24.5, 20],
+    body: '<path d="M20 4.5l13.4 7.75v15.5L20 35.5 6.6 27.75v-15.5z" stroke-width="4" stroke-linejoin="round"/>' },
+  collection: { color: "#F43F5E", role: "mengirim pengingat tagihan", eyes: [16.5, 23.5, 20],
+    body: '<rect x="8.5" y="8.5" width="23" height="23" rx="6.5" transform="rotate(45 20 20)"/>' },
+  cash_application: { color: "#10B981", role: "mencocokkan pembayaran", eyes: [16, 24, 20],
+    body: '<circle cx="20" cy="11" r="8.5"/><circle cx="29" cy="20" r="8.5"/><circle cx="20" cy="29" r="8.5"/><circle cx="11" cy="20" r="8.5"/><circle cx="20" cy="20" r="9"/>' },
+  supervisor: { color: "#6366F1", role: "mengawasi dan menyusun brief", eyes: [15.5, 24.5, 21],
+    body: '<path d="M5.5 33V19a14.5 14.5 0 0 1 29 0v14a2.5 2.5 0 0 1-2.5 2.5H8A2.5 2.5 0 0 1 5.5 33z"/>' },
+};
+
+function mascot(agent, size) {
+  const m = MASCOT[agent] || MASCOT.supervisor;
+  const [lx, rx, y] = m.eyes;
+  const s = document.createElementNS(SVGNS, "svg");
+  s.setAttribute("viewBox", "0 0 40 40");
+  s.setAttribute("width", size || 28);
+  s.setAttribute("height", size || 28);
+  s.setAttribute("class", "mascot");
+  s.setAttribute("aria-hidden", "true");
+  s.setAttribute("focusable", "false");
+  s.innerHTML = `<g fill="${m.color}" stroke="${m.color}" stroke-width="0">${m.body}</g>` +
+    `<ellipse cx="${lx}" cy="${y}" rx="2.6" ry="3.6" fill="#0F172A"/><ellipse cx="${rx}" cy="${y}" rx="2.6" ry="3.6" fill="#0F172A"/>`;
+  return s;
+}
+
 // AI-generated portraits of fictional shop owners; other contacts keep the default silhouette
 const AVATAR = {
   "Toko Sinar Jaya": "sinar_jaya", "Grosir Pak Slamet": "grosir_pak_slamet", "Toko Cahaya Baru": "cahaya_baru",
@@ -342,7 +374,7 @@ function chain(runs, openIndex) {
   return el("ol", { class: "rail" }, runs.map((r, i) => {
     const failed = r.status === "FAILED";
     return el("li", {},
-      el("span", { class: `rail-node${failed ? " bad" : ""}`, "aria-hidden": "true" }),
+      el("span", { class: `rail-mascot${failed ? " bad" : ""}`, "aria-hidden": "true" }, mascot(r.agent, 28)),
       el("div", {},
         el("div", { class: "rail-head" }, el("span", { class: "rail-title" }, `Agen ${AGENT[r.agent] || r.agent}`),
           el("span", { class: "rail-meta" }, `${jam(r.started_at)}${r.llm_calls ? ` · ${r.llm_calls} panggilan LLM` : ""}`)),
@@ -450,8 +482,9 @@ async function openRun(id) {
     const r = await api(`/api/runs/${id}`);
     openSheet(["Aktivitas agen", `Agen ${AGENT[r.agent] || r.agent}`], `Jejak agen ${AGENT[r.agent] || r.agent}`, [
       section(null, el("div", { class: "hero" },
-        el("div", { class: "hero-top" }, el("div", {}, el("p", { class: "hero-title" }, `Agen ${AGENT[r.agent] || r.agent}`),
-          el("p", { class: "hero-sub" }, `${tgl(r.started_at, true)} · ${r.steps.length} langkah${r.llm_calls ? ` · ${r.llm_calls} panggilan LLM` : ""}`)),
+        el("div", { class: "hero-top" }, el("div", { class: "hero-agent" }, mascot(r.agent, 44), el("div", {}, el("p", { class: "hero-title" }, `Agen ${AGENT[r.agent] || r.agent}`),
+          el("p", { class: "hero-sub" }, `${tgl(r.started_at, true)} · ${r.steps.length} langkah${r.llm_calls ? ` · ${r.llm_calls} panggilan LLM` : ""}`),
+          el("p", { class: "hero-sub" }, `Tugasnya: ${(MASCOT[r.agent] || {}).role || "-"}`))),
           el("span", { class: `pill ${r.status === "FAILED" ? "block" : "done"}` }, r.status === "FAILED" ? "Gagal" : "Selesai")),
         r.summary ? el("p", {}, humanDates(r.summary)) : null)),
       section("Langkah", stepList(r.steps)),
@@ -478,12 +511,10 @@ function approvalTone(a) {
 
 const BULAN_PANJANG = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
 const AGENT_GROUP = { intake: "order", fulfillment: "order", credit: "order", collection: "uang", cash_application: "uang", supervisor: "sistem" };
-const AGENT_CHIP = { intake: "IN", fulfillment: "FU", credit: "KR", collection: "PN", cash_application: "KM", supervisor: "SV" };
 const AGENT_TASK = { supervisor: "Brief pagi", collection: "Penagihan pagi", cash_application: "Pencocokan mutasi bank" };
 // agent summaries carry ISO dates; people read "Rabu 11 Nov"
 const humanDates = (text) => (text ? text.replace(/\b(\d{4}-\d{2}-\d{2})\b/g, (d) => tgl(d)) : text);
 const FEED_TABS = [["semua", "Semua"], ["order", "Order"], ["uang", "Uang"], ["sistem", "Sistem"]];
-const FEED_NODE_ICON = { order: "note", uang: "money", sistem: "info" };
 
 function longDate(iso) {
   const d = new Date(iso);
@@ -524,17 +555,16 @@ function activityRail(runs, approvals, orders) {
   const LIMIT = 6;
 
   const item = (r) => {
-    const group = AGENT_GROUP[r.agent] || "sistem";
     const failed = r.status === "FAILED";
     return el("li", {},
-      el("span", { class: `feed-node${failed ? " bad" : ""}`, "aria-hidden": "true" }, icon(FEED_NODE_ICON[group], 13)),
+      el("span", { class: `feed-node${failed ? " bad" : ""}`, title: `Agen ${AGENT[r.agent] || r.agent}: ${(MASCOT[r.agent] || {}).role || ""}` }, mascot(r.agent, 34)),
       el("button", { type: "button", class: "feed-item", onclick: () => openRun(r.id) },
         el("span", { class: "feed-top" },
           el("span", { class: "feed-title" }, r.customer || AGENT_TASK[r.agent] || `Agen ${AGENT[r.agent] || r.agent}`),
           el("span", { class: "feed-time" }, ago(r.started_at))),
         el("span", { class: "feed-text" }, humanDates(r.summary) || `${r.step_count} langkah`),
         el("span", { class: "feed-meta" },
-          el("span", { class: "agent-chip", "aria-hidden": "true" }, AGENT_CHIP[r.agent] || "AG"),
+          el("span", { class: "agent-dot", style: `background:${(MASCOT[r.agent] || MASCOT.supervisor).color}`, "aria-hidden": "true" }),
           `Agen ${AGENT[r.agent] || r.agent}`,
           failed ? el("span", { class: "pill block" }, "Gagal") : null)));
   };

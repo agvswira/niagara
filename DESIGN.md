@@ -12,6 +12,11 @@ liked; earlier a dark approval tool), with Niagara's own colour and motif. Dial 
   panel. It is never used as decoration elsewhere.
 - **Accent.** One deep blue-green (teal), the colour of falling water. Used for the primary action on a screen,
   the active nav item, and the flow rail. Nowhere else (the chat simulator uses its own WhatsApp-like greens).
+- **Agent mascots.** Each of the six agents is one flat shape with two dot eyes, no props: Intake a blue circle,
+  Fulfillment an orange rounded square, Kredit a purple hexagon, Penagihan a pink diamond, Kas masuk a green
+  four-petal flower, Supervisor an indigo arch. Shape and colour both differ, so agents stay distinguishable for
+  colour-blind readers too. The colours appear only on the mascots and a small dot beside the agent's name, which
+  is always written out. Drawn in code (SVG), not generated images.
 - **Status colours** are functional, not palette: amber = waiting on a person, red = blocked or failed,
   green = done. They appear only as tinted pills, bars and icons, always with a text label.
 
@@ -36,9 +41,8 @@ Contrast was checked with the antislop contrast script; every text pairing passe
 
 ## Type
 
-- **Plus Jakarta Sans** for everything: drawn by Tokotype, an Indonesian foundry, for the city of Jakarta; geometric
-  and friendly like the reference, with tabular figures so rupiah columns line up. Big figures use 800 weight with
-  tight tracking; body stays at 400.
+- **Satoshi** (Fontshare, free for commercial use) for everything: geometric like the reference, firm at large
+  figure sizes and calm in small table text. The team picked it from a side-by-side sheet of six candidates.
 - **IBM Plex Mono** only for codes people copy or match: order, invoice and SKU numbers.
 - Section labels are sentence case at 12px semibold, not wide-tracked capitals.
 
