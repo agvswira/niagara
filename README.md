@@ -4,6 +4,8 @@ Tim agen AI untuk alur order-to-cash distributor B2B di Indonesia. Pelanggan (to
 
 Dibuat untuk GTNIC 2026, kategori AI Agent (Building Intelligent AI Agents for Enterprise Productivity).
 
+**Demo langsung:** https://niagara-demo.indonesiacentral.cloudapp.azure.com (masuk dengan akun demo `supervisor`).
+
 ## Masalah yang diselesaikan
 
 Distributor tier-2 menerima ratusan order per hari lewat WhatsApp: teks penuh singkatan, foto nota tulisan tangan, pesan suara. Admin mengetik ulang semuanya ke Excel atau ERP, mengecek stok dan limit kredit satu per satu, lalu staf AR menagih lewat chat dan mencocokkan bukti transfer ke mutasi bank secara manual. Pekerjaan ini terjadi setiap hari, bukan musiman, dan kesalahannya langsung jadi salah kirim, retur, atau piutang macet.
