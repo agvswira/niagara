@@ -28,7 +28,7 @@ function mascot(agent, size) {
 }
 
 document.querySelectorAll("[data-mascot]").forEach((el) => {
-  const size = el.closest(".flow-node") ? (el.closest(".pair") ? 28 : 40) : 28;
+  const size = el.closest(".flow-node") ? 40 : 28;
   el.append(mascot(el.dataset.mascot, size));
 });
 document.querySelectorAll("[data-mascots]").forEach((el) => {
